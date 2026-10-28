@@ -1,0 +1,13 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Entity Explorer",
+                "description": "Adds the Entity Explorer panel to the sidebar for admin users."
+            }
+        },
+        "abort": {
+            "single_instance_allowed": "Entity Explorer is already set up."
+        }
+    }
+}

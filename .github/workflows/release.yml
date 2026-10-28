@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  release:
+    types:
+      - published
+
+permissions: {}
+
+jobs:
+  release:
+    name: "Release zip"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up mise
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+
+      - name: Build the panel bundle
+        run: |
+          pnpm --dir frontend install --frozen-lockfile
+          mise run build
+
+      # HACS shows the manifest version, so it has to match the release tag.
+      - name: Set the manifest version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          jq --arg version "${TAG#v}" '.version = $version' \
+            custom_components/entity_explorer/manifest.json > manifest.tmp
+          mv manifest.tmp custom_components/entity_explorer/manifest.json
+
+      # hacs.json zip_release expects the integration files at the zip root.
+      - name: Zip the integration
+        working-directory: custom_components/entity_explorer
+        run: zip -r "${GITHUB_WORKSPACE}/entity_explorer.zip" . -x "__pycache__/*"
+
+      - name: Upload the zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" entity_explorer.zip --repo "$GITHUB_REPOSITORY"

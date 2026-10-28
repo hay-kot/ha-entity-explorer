@@ -16,3 +16,8 @@ coverage.xml
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+
+# frontend
+node_modules
+.venv
+custom_components/entity_explorer/frontend

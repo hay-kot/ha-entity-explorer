@@ -1,0 +1,57 @@
+[tools]
+node = "24.22.1"
+pnpm = "12.15.0"
+python = "3.14.9"
+uv = "0.13.5"
+ruff = "0.17.2"
+
+[env]
+# Keep uv on the mise-pinned interpreter instead of a uv-managed download.
+UV_PYTHON_DOWNLOADS = "never"
+
+[tasks.setup]
+description = "Install Python and frontend dependencies"
+run = [
+    "uv sync",
+    "pnpm --dir frontend install --frozen-lockfile",
+]
+
+[tasks.build]
+description = "Build the panel bundle into the integration"
+dir = "frontend"
+run = "pnpm run build"
+
+[tasks.watch]
+description = "Rebuild the panel bundle on change"
+dir = "frontend"
+run = "pnpm run watch"
+
+[tasks.develop]
+description = "Run Home Assistant with the integration loaded"
+depends = ["build"]
+# HA imports custom_components from the directory on sys.path that holds it,
+# and config/ lives next to it at the repo root.
+env = { PYTHONPATH = "{{config_root}}" }
+run = "uv run hass --config config --debug"
+
+[tasks.lint]
+description = "Lint and typecheck Python and TypeScript"
+run = [
+    "ruff check .",
+    "ruff format --check .",
+    "pnpm --dir frontend run typecheck",
+]
+
+[tasks.fmt]
+description = "Format and autofix Python"
+run = [
+    "ruff format .",
+    "ruff check --fix .",
+]
+
+[tasks.check]
+description = "Run all checks for PRs (lint, build)"
+run = [
+    { task = "lint" },
+    { task = "build" },
+]

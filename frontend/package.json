@@ -1,0 +1,17 @@
+{
+  "name": "entity-explorer-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lit": "^3.3.3"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

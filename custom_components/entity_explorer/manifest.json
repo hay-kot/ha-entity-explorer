@@ -1,0 +1,13 @@
+{
+  "domain": "entity_explorer",
+  "name": "Entity Explorer",
+  "codeowners": ["@hay-kot"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "panel_custom"],
+  "documentation": "https://github.com/hay-kot/ha-entity-explorer",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/hay-kot/ha-entity-explorer/issues",
+  "single_config_entry": true,
+  "version": "0.1.0"
+}
