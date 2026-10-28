@@ -11,7 +11,7 @@ import { domainIcon, entityIcon } from "../icons";
 import { isActive, isUnavailable, isUpdateAvailable } from "../state";
 import type { TreeNode, ViewId } from "../tree/model";
 import type { SearchResult, TreeRow } from "../tree/rows";
-import { CHIPS, VIEWS, type ChipId } from "../views";
+import { CHIPS, TREE_SIZES, VIEWS, type ChipId, type TreeSize } from "../views";
 
 type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResult };
 
@@ -21,6 +21,8 @@ type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResu
 //   ee-select        detail: node id
 //   ee-query-change  detail: string
 //   ee-chip-toggle   detail: ChipId
+//   ee-size-change   detail: TreeSize
+//   ee-group-network-change  detail: boolean
 //   ee-expand-all, ee-collapse-all
 export class EntityExplorerTreePane extends LitElement {
   static properties = {
@@ -34,6 +36,9 @@ export class EntityExplorerTreePane extends LitElement {
     chips: { attribute: false },
     entityTotal: { attribute: false },
     entityTotalUnfiltered: { attribute: false },
+    size: { reflect: true },
+    groupNetwork: { attribute: false },
+    optionsOpen: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -48,6 +53,37 @@ export class EntityExplorerTreePane extends LitElement {
   declare chips: ReadonlySet<ChipId>;
   declare entityTotal: number;
   declare entityTotalUnfiltered: number;
+  declare size: TreeSize;
+  declare groupNetwork: boolean;
+  declare private optionsOpen: boolean;
+
+  constructor() {
+    super();
+    this.size = "default";
+    this.groupNetwork = true;
+    this.optionsOpen = false;
+  }
+
+  private closeMenuOutside = (e: Event) => {
+    const anchor = this.renderRoot.querySelector(".menu-anchor");
+    if (anchor && !e.composedPath().includes(anchor)) this.optionsOpen = false;
+  };
+
+  private closeMenuOnEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") this.optionsOpen = false;
+  };
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.optionsOpen = false;
+    this.listenForMenuClose(false);
+  }
+
+  private listenForMenuClose(on: boolean) {
+    const method = on ? "addEventListener" : "removeEventListener";
+    document[method]("pointerdown", this.closeMenuOutside);
+    document[method]("keydown", this.closeMenuOnEscape as EventListener);
+  }
 
   private scrollToSelected = false;
 
@@ -58,6 +94,7 @@ export class EntityExplorerTreePane extends LitElement {
 
   protected async updated(changed: PropertyValues) {
     super.updated(changed);
+    if (changed.has("optionsOpen")) this.listenForMenuClose(this.optionsOpen);
     if (!this.scrollToSelected) return;
     this.scrollToSelected = false;
     const index = this.items().findIndex(
@@ -154,7 +191,6 @@ export class EntityExplorerTreePane extends LitElement {
             `,
           )}
         </div>
-        <div class="note"><ha-icon icon="mdi:information-outline"></ha-icon>${VIEWS[this.view].note}</div>
       </div>
       ${items.length
         ? // The directive, not the <lit-virtualizer> element: HA's frontend
@@ -185,9 +221,51 @@ export class EntityExplorerTreePane extends LitElement {
           >${filtered ? `${this.entityTotal} of ${this.entityTotalUnfiltered}` : this.entityTotal}
           entities</span
         >
-        ${this.view === "location"
-          ? html`<span class="key"><i></i>area override</span><span>1 of 2 = split device</span>`
-          : nothing}
+        <div class="menu-anchor">
+          <button
+            class="icon small"
+            title="Tree options"
+            aria-label="Tree options"
+            aria-haspopup="dialog"
+            aria-expanded=${String(this.optionsOpen)}
+            @click=${() => (this.optionsOpen = !this.optionsOpen)}
+          >
+            <ha-icon icon="mdi:dots-horizontal"></ha-icon>
+          </button>
+          ${this.optionsOpen
+            ? html`<div class="menu" role="dialog" aria-label="Tree options">
+                <div class="menu-section">
+                  <div class="menu-title">Tree size</div>
+                  <div class="seg sizes" role="radiogroup" aria-label="Tree size">
+                    ${TREE_SIZES.map(
+                      (size) => html`<button
+                        role="radio"
+                        aria-checked=${String(this.size === size.id)}
+                        @click=${() => this.emit("ee-size-change", size.id)}
+                      >
+                        ${size.label}
+                      </button>`,
+                    )}
+                  </div>
+                </div>
+                ${this.view === "network"
+                  ? html`<label class="menu-section toggle">
+                      <span>Group by integration type</span>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        .checked=${this.groupNetwork}
+                        @change=${(e: Event) =>
+                          this.emit(
+                            "ee-group-network-change",
+                            (e.target as HTMLInputElement).checked,
+                          )}
+                      />
+                    </label>`
+                  : nothing}
+              </div>`
+            : nothing}
+        </div>
       </div>
     `;
   }
@@ -227,7 +305,7 @@ export class EntityExplorerTreePane extends LitElement {
         aria-level=${depth + 1}
         aria-expanded=${isFolder && !path ? String(expanded) : nothing}
         aria-selected=${String(this.selectedId === node.id)}
-        style="padding-left: ${4 + depth * 12}px"
+        style="--depth: ${depth}"
         title=${stateText ? `${node.label}: ${stateText}` : nothing}
         @click=${() => this.emit("ee-select", node.id)}
         @dblclick=${isFolder && !path ? toggle : nothing}
@@ -277,6 +355,24 @@ export class EntityExplorerTreePane extends LitElement {
       container-type: inline-size;
       background: var(--card-background-color);
       --mdc-icon-size: 16px;
+      --row-height: 36px;
+      --row-font-size: 14px;
+      --row-icon-size: 20px;
+      --row-indent: 16px;
+    }
+
+    :host([size="compact"]) {
+      --row-height: 28px;
+      --row-font-size: 13.5px;
+      --row-icon-size: 16px;
+      --row-indent: 12px;
+    }
+
+    :host([size="large"]) {
+      --row-height: 44px;
+      --row-font-size: 15px;
+      --row-icon-size: 24px;
+      --row-indent: 20px;
     }
 
     button {
@@ -289,7 +385,6 @@ export class EntityExplorerTreePane extends LitElement {
     .seg ha-icon,
     .search ha-icon,
     .chip ha-icon,
-    .note ha-icon,
     button.icon ha-icon {
       display: flex;
       flex: none;
@@ -423,19 +518,11 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--primary-color);
     }
 
-    .note {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 15px;
-    }
-
     .tree {
       flex: 1;
       min-height: 0;
       padding: 4px 6px;
+      --mdc-icon-size: var(--row-icon-size);
     }
 
     .empty {
@@ -452,10 +539,11 @@ export class EntityExplorerTreePane extends LitElement {
       gap: 4px;
       width: calc(100% - 12px);
       box-sizing: border-box;
-      height: 28px;
+      height: var(--row-height);
+      padding-left: calc(4px + var(--depth, 0) * var(--row-indent));
       padding-right: 10px;
       border-radius: 6px;
-      font-size: 13.5px;
+      font-size: var(--row-font-size);
       white-space: nowrap;
       cursor: pointer;
       outline: none;
@@ -476,12 +564,12 @@ export class EntityExplorerTreePane extends LitElement {
     }
 
     .row.result {
-      height: 40px;
+      height: calc(var(--row-height) + 12px);
     }
 
     .chev {
       flex: none;
-      width: 16px;
+      width: var(--row-icon-size);
       display: grid;
       place-items: center;
       color: var(--secondary-text-color);
@@ -558,8 +646,7 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--secondary-text-color);
     }
 
-    .override,
-    .key i {
+    .override {
       flex: none;
       display: inline-block;
       width: 7px;
@@ -571,14 +658,14 @@ export class EntityExplorerTreePane extends LitElement {
     .count {
       margin-left: auto;
       padding-left: 8px;
-      font-size: 12px;
+      font-size: calc(var(--row-font-size) - 1.5px);
       font-weight: 400;
       color: var(--secondary-text-color);
     }
 
     .foot {
       display: flex;
-      gap: var(--ha-space-3, 12px);
+      gap: 4px;
       align-items: center;
       padding: 8px 12px;
       border-top: 1px solid var(--divider-color);
@@ -586,10 +673,108 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--secondary-text-color);
     }
 
-    .key {
-      display: inline-flex;
+    .menu-anchor {
+      position: relative;
+    }
+
+    .foot > span:first-child {
+      margin-right: auto;
+    }
+
+    button.icon.small {
+      width: 28px;
+      height: 28px;
+      margin: -4px -4px -4px 0;
+    }
+
+    .menu {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 10px);
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      width: 260px;
+      border-radius: 12px;
+      background: var(--card-background-color);
+      border: 1px solid var(--divider-color);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      color: var(--primary-text-color);
+      font-size: 14px;
+    }
+
+    .menu-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 14px;
+    }
+
+    .menu-section + .menu-section {
+      border-top: 1px solid var(--divider-color);
+    }
+
+    .menu-title {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+    }
+
+    .seg.sizes {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .seg.sizes button[aria-checked="true"] {
+      background: rgba(var(--rgb-primary-color), 0.12);
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    .toggle {
+      flex-direction: row;
       align-items: center;
-      gap: 5px;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    /* A plain checkbox drawn as a switch: HA's ha-switch is not guaranteed
+       to be loaded when the panel opens. */
+    .toggle input {
+      appearance: none;
+      flex: none;
+      position: relative;
+      width: 34px;
+      height: 20px;
+      margin: 0;
+      border-radius: 10px;
+      background: var(--disabled-text-color);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .toggle input::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--card-background-color);
+      transition: transform 0.15s;
+    }
+
+    .toggle input:checked {
+      background: var(--primary-color);
+    }
+
+    .toggle input:checked::after {
+      transform: translateX(14px);
+    }
+
+    .toggle input:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
     }
   `;
 }

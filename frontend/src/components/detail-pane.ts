@@ -39,11 +39,41 @@ function navigate(path: string) {
 function settingsPath(node: TreeNode): string | undefined {
   if (node.deviceId) return `/config/devices/device/${node.deviceId}`;
   if (node.areaId) return `/config/areas/area/${node.areaId}`;
+  if (node.kind === "entry" && node.domain && node.entryId) {
+    return `/config/integrations/integration/${node.domain}#config_entry=${node.entryId}`;
+  }
   if (node.kind === "integration" && node.domain) {
     return `/config/integrations/integration/${node.domain}`;
   }
   if (node.kind === "label") return "/config/labels";
   return undefined;
+}
+
+const EDITORS: Record<string, string> = {
+  automation: "Edit automation",
+  script: "Edit script",
+  scene: "Edit scene",
+};
+
+// Mirrors HA's own links. Automations and scenes carry their config id as
+// the `id` attribute and have none when defined in YAML without one. Scripts
+// key their editor by the registry unique_id, which display entries leave out.
+async function editorPath(hass: HomeAssistant, entityId: string): Promise<string | undefined> {
+  const domain = entityId.slice(0, entityId.indexOf("."));
+  if (domain === "script") {
+    try {
+      const entry = await hass.callWS<{ unique_id?: string }>({
+        type: "config/entity_registry/get",
+        entity_id: entityId,
+      });
+      if (entry.unique_id) return `/config/script/edit/${encodeURIComponent(entry.unique_id)}`;
+    } catch {
+      // Not in the registry: the read-only script page still opens.
+    }
+    return `/config/script/show/${entityId}`;
+  }
+  const id = hass.states[entityId]?.attributes.id;
+  return typeof id === "string" && id ? `/config/${domain}/edit/${encodeURIComponent(id)}` : undefined;
 }
 
 // Events:
@@ -204,7 +234,23 @@ export class EntityExplorerDetailPane extends LitElement {
       ["history", "History", "mdi:chart-line"],
       ["references", "References", "mdi:sitemap-outline"],
     ];
+    const editor = EDITORS[entityId.slice(0, entityId.indexOf("."))];
+    const canEdit =
+      editor && (entityId.startsWith("script.") || Boolean(stateObj?.attributes.id));
     const actions = html`<div class="icon-actions">
+      ${canEdit
+        ? html`<button
+            class="icon"
+            title=${editor}
+            aria-label=${editor}
+            @click=${async () => {
+              const path = await editorPath(this.hass, entityId);
+              if (path) navigate(path);
+            }}
+          >
+            <ha-icon icon="mdi:pencil-outline"></ha-icon>
+          </button>`
+        : nothing}
       <button
         class="icon"
         title="More info"
@@ -514,9 +560,10 @@ export class EntityExplorerDetailPane extends LitElement {
       const area = this.hass.areas[node.areaId];
       const floor = area?.floor_id ? this.hass.floors[area.floor_id] : undefined;
       rows.push(["Floor", floor?.name ?? "No floor"]);
-    } else if (node.kind === "integration" && node.domain) {
-      rows.push(["Domain", node.domain]);
-    } else if (node.kind === "domain" && node.domain) {
+    } else if (
+      (node.kind === "integration" || node.kind === "entry" || node.kind === "domain") &&
+      node.domain
+    ) {
       rows.push(["Domain", node.domain]);
     } else {
       rows.push(["Kind", node.kind]);
