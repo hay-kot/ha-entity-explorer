@@ -62,6 +62,7 @@ export interface IntegrationManifest {
 export interface HassEntity {
   entity_id: string;
   state: string;
+  last_changed: string;
   attributes: {
     friendly_name?: string;
     device_class?: string;
@@ -81,10 +82,28 @@ export interface HomeAssistant {
   };
   callWS<T>(msg: { type: string; [key: string]: unknown }): Promise<T>;
   formatEntityState(stateObj: HassEntity): string;
+  formatEntityAttributeValue(stateObj: HassEntity, attribute: string): string;
+  locale: { language: string };
 }
 
 export interface PanelInfo {
   url_path: string;
   title: string | null;
   config: Record<string, unknown> | null;
+}
+
+// Card config and element as loadCardHelpers() returns them. Card configs are a
+// public format; the elements are HA's own cards.
+export interface LovelaceCard extends HTMLElement {
+  hass?: HomeAssistant;
+}
+
+export interface CardHelpers {
+  createCardElement(config: Record<string, unknown>): LovelaceCard;
+}
+
+declare global {
+  interface Window {
+    loadCardHelpers?: () => Promise<CardHelpers>;
+  }
 }

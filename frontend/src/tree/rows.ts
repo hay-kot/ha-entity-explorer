@@ -117,3 +117,39 @@ export function distinctEntityCount(roots: TreeNode[]): number {
   visit(roots);
   return seen.size;
 }
+
+export interface NodeHit {
+  node: TreeNode;
+  ancestors: TreeNode[];
+}
+
+// Every node for the entity. Only the Labels view has more than one.
+export function findEntityAll(roots: TreeNode[], entityId: string): NodeHit[] {
+  const hits: NodeHit[] = [];
+  const visit = (nodes: TreeNode[], ancestors: TreeNode[]) => {
+    for (const node of nodes) {
+      if (node.entityId === entityId) hits.push({ node, ancestors });
+      else if (node.children.length) visit(node.children, [...ancestors, node]);
+    }
+  };
+  visit(roots, []);
+  return hits;
+}
+
+// The entity nodes under a folder, in tree order, each entity once.
+export function entityNodes(node: TreeNode): TreeNode[] {
+  const seen = new Set<string>();
+  const out: TreeNode[] = [];
+  const visit = (n: TreeNode) => {
+    if (n.entityId) {
+      if (!seen.has(n.entityId)) {
+        seen.add(n.entityId);
+        out.push(n);
+      }
+      return;
+    }
+    n.children.forEach(visit);
+  };
+  visit(node);
+  return out;
+}

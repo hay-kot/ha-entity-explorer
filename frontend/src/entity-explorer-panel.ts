@@ -3,6 +3,7 @@ import "./components/tree-pane";
 
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 
+import type { ViewReference } from "./components/detail-pane";
 import type { ChipId, EntityExplorerTreePane } from "./components/tree-pane";
 import {
   EMPTY_EXTRAS,
@@ -13,13 +14,15 @@ import {
   referencedDomains,
   type RegistryExtras,
 } from "./data/registry";
+import { define } from "./define";
 import type { HomeAssistant, PanelInfo } from "./hass";
 import { buildView } from "./tree/build";
-import type { Registry, TreeNode, ViewId } from "./tree/model";
+import { VIEW_IDS, type Registry, type TreeNode, type ViewId } from "./tree/model";
 import {
   distinctEntityCount,
   filterTree,
   findEntity,
+  findEntityAll,
   findNode,
   searchTree,
   visibleRows,
@@ -28,6 +31,21 @@ import {
 interface Selection {
   id: string;
   entityId?: string;
+}
+
+const TREE_WIDTH_KEY = "entity-explorer.tree-width";
+const TREE_WIDTH_DEFAULT = 400;
+const TREE_WIDTH_MIN = 260;
+// Room the detail pane keeps when the tree is dragged wider.
+const DETAIL_WIDTH_MIN = 360;
+
+function storedTreeWidth(): number {
+  try {
+    const value = Number(localStorage.getItem(TREE_WIDTH_KEY));
+    return value >= TREE_WIDTH_MIN ? value : TREE_WIDTH_DEFAULT;
+  } catch {
+    return TREE_WIDTH_DEFAULT;
+  }
 }
 
 export class EntityExplorerPanel extends LitElement {
@@ -42,6 +60,7 @@ export class EntityExplorerPanel extends LitElement {
     query: { state: true },
     chips: { state: true },
     extras: { state: true },
+    treeWidth: { state: true },
   };
 
   declare hass?: HomeAssistant;
@@ -57,12 +76,14 @@ export class EntityExplorerPanel extends LitElement {
   declare private query: string;
   declare private chips: ReadonlySet<ChipId>;
   declare private extras: RegistryExtras;
+  declare private treeWidth: number;
 
   private registryCache = new RegistryCache();
   private trees = new Map<ViewId, TreeNode[]>();
   private treesRegistry?: Registry;
   private requestedDomains = new Set<string>();
   private loading = false;
+  private referencesCache?: { registry: Registry; entityId: string; value: ViewReference[] };
   private unsubscribeLabels?: Promise<() => void>;
 
   constructor() {
@@ -74,6 +95,7 @@ export class EntityExplorerPanel extends LitElement {
     this.query = "";
     this.chips = new Set();
     this.extras = EMPTY_EXTRAS;
+    this.treeWidth = storedTreeWidth();
   }
 
   disconnectedCallback() {
@@ -207,25 +229,97 @@ export class EntityExplorerPanel extends LitElement {
   }
 
   private onViewChange(e: CustomEvent<ViewId>) {
-    this.view = e.detail;
+    this.showInView(e.detail);
+  }
+
+  private onReveal(e: CustomEvent<{ view: ViewId; nodeId: string }>) {
+    this.query = "";
+    this.showInView(e.detail.view, e.detail.nodeId);
+  }
+
+  // Switches to `view` and selects `nodeId`, or the selected entity's node in
+  // that view. A selected folder has no counterpart, so the selection clears.
+  private showInView(view: ViewId, nodeId?: string) {
+    this.view = view;
+    const roots = this.roots(view);
     const entityId = this.selection?.entityId;
-    if (!entityId) {
-      this.selection = undefined;
-      return;
-    }
-    const hit = findEntity(this.roots(this.view), entityId);
+    const hit = nodeId
+      ? findNode(roots, nodeId)
+      : entityId
+        ? findEntity(roots, entityId)
+        : undefined;
     if (!hit) {
       this.selection = undefined;
       return;
     }
-    this.selection = { id: hit.node.id, entityId };
+    this.selection = { id: hit.node.id, entityId: hit.node.entityId };
     this.setExpanded(
       hit.ancestors.map((n) => n.id),
       true,
     );
+    this.revealInTree();
+  }
+
+  private revealInTree() {
     this.updateComplete.then(() =>
       this.renderRoot.querySelector<EntityExplorerTreePane>("ee-tree-pane")?.revealSelected(),
     );
+  }
+
+  private references(entityId: string): ViewReference[] {
+    const registry = this.treesRegistry!;
+    const cached = this.referencesCache;
+    if (cached?.registry === registry && cached.entityId === entityId) return cached.value;
+    const value = VIEW_IDS.map((view) => ({ view, hits: findEntityAll(this.roots(view), entityId) }));
+    this.referencesCache = { registry, entityId, value };
+    return value;
+  }
+
+  private clampTreeWidth(width: number): number {
+    const max = Math.max(TREE_WIDTH_MIN, this.clientWidth - DETAIL_WIDTH_MIN);
+    return Math.round(Math.min(Math.max(width, TREE_WIDTH_MIN), max));
+  }
+
+  private saveTreeWidth() {
+    try {
+      localStorage.setItem(TREE_WIDTH_KEY, String(this.treeWidth));
+    } catch {
+      // Storage can be blocked. The width then lasts until the page reloads.
+    }
+  }
+
+  private onSplitterDown(e: PointerEvent) {
+    const handle = e.currentTarget as HTMLElement;
+    const startX = e.clientX;
+    const startWidth = this.treeWidth;
+    handle.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      this.treeWidth = this.clampTreeWidth(startWidth + ev.clientX - startX);
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      this.saveTreeWidth();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+    e.preventDefault();
+  }
+
+  private onSplitterKey(e: KeyboardEvent) {
+    const step = e.shiftKey ? 64 : 16;
+    if (e.key === "ArrowLeft") this.treeWidth = this.clampTreeWidth(this.treeWidth - step);
+    else if (e.key === "ArrowRight") this.treeWidth = this.clampTreeWidth(this.treeWidth + step);
+    else return;
+    e.preventDefault();
+    this.saveTreeWidth();
+  }
+
+  private resetTreeWidth() {
+    this.treeWidth = this.clampTreeWidth(TREE_WIDTH_DEFAULT);
+    this.saveTreeWidth();
   }
 
   private onChipToggle(e: CustomEvent<ChipId>) {
@@ -259,7 +353,7 @@ export class EntityExplorerPanel extends LitElement {
           : nothing}
         <h1>${this.panel?.title ?? "Entity Explorer"}</h1>
       </div>
-      <div class="body">
+      <div class="body" style="--tree-width: ${this.treeWidth}px">
         <ee-tree-pane
           .hass=${this.hass}
           .view=${this.view}
@@ -276,10 +370,33 @@ export class EntityExplorerPanel extends LitElement {
           @ee-query-change=${(e: CustomEvent<string>) => (this.query = e.detail)}
           @ee-chip-toggle=${this.onChipToggle}
         ></ee-tree-pane>
+        ${this.narrow
+          ? nothing
+          : html`<div
+              class="splitter"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize tree"
+              aria-valuenow=${this.treeWidth}
+              aria-valuemin=${TREE_WIDTH_MIN}
+              tabindex="0"
+              title="Drag to resize. Double-click to reset."
+              @pointerdown=${this.onSplitterDown}
+              @keydown=${this.onSplitterKey}
+              @dblclick=${this.resetTreeWidth}
+            ></div>`}
         <ee-detail-pane
           .hass=${this.hass}
+          .registry=${this.treesRegistry}
+          .view=${this.view}
           .node=${selected?.node}
           .ancestors=${selected?.ancestors ?? []}
+          .references=${this.selection?.entityId ? this.references(this.selection.entityId) : []}
+          @ee-select=${(e: CustomEvent<string>) => {
+            this.onSelect(e);
+            this.revealInTree();
+          }}
+          @ee-reveal=${this.onReveal}
         ></ee-detail-pane>
       </div>
     `;
@@ -332,12 +449,48 @@ export class EntityExplorerPanel extends LitElement {
       flex: 1;
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(300px, 400px) 1fr;
+      grid-template-columns: var(--tree-width) 9px minmax(0, 1fr);
     }
 
     :host([narrow]) .body {
       grid-template-columns: 1fr;
       grid-template-rows: minmax(0, 1fr) auto;
+    }
+
+    ee-tree-pane {
+      min-width: 0;
+    }
+
+    /* A 9px hit area with a 1px line in the middle, like a pane border. */
+    .splitter {
+      position: relative;
+      margin: 0 -4px 0 -4px;
+      width: 9px;
+      cursor: col-resize;
+      touch-action: none;
+      z-index: 1;
+      outline: none;
+    }
+
+    .splitter::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 4px;
+      width: 1px;
+      background: var(--divider-color);
+      transition:
+        background-color 0.15s,
+        width 0.15s,
+        left 0.15s;
+    }
+
+    .splitter:hover::after,
+    .splitter:focus-visible::after {
+      left: 3px;
+      width: 3px;
+      background: var(--primary-color);
     }
   `;
 }
@@ -355,7 +508,7 @@ function openFolders(roots: TreeNode[], closed: ReadonlySet<string>): ReadonlySe
   return open;
 }
 
-customElements.define("entity-explorer-panel", EntityExplorerPanel);
+define("entity-explorer-panel", EntityExplorerPanel);
 
 declare global {
   interface HTMLElementTagNameMap {

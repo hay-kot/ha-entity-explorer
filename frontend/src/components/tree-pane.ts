@@ -5,10 +5,12 @@ import {
 } from "@lit-labs/virtualizer/virtualize.js";
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 
+import { define } from "../define";
 import type { HomeAssistant } from "../hass";
 import { domainIcon, entityIcon } from "../icons";
 import type { TreeNode, ViewId } from "../tree/model";
 import type { SearchResult, TreeRow } from "../tree/rows";
+import { VIEWS } from "../views";
 
 export type ChipId = "unavailable" | "hide-diagnostic" | "hide-hidden";
 
@@ -17,25 +19,6 @@ export const CHIPS: { id: ChipId; label: string; icon: string }[] = [
   { id: "hide-diagnostic", label: "Hide diagnostic", icon: "mdi:eye-off-outline" },
   { id: "hide-hidden", label: "Hide hidden", icon: "mdi:eye-off" },
 ];
-
-export const VIEWS: Record<ViewId, { name: string; icon: string; note: string }> = {
-  location: {
-    name: "Location",
-    icon: "mdi:home-outline",
-    note: "Floor > Area > Device > Entity. Each entity appears once.",
-  },
-  network: {
-    name: "Network",
-    icon: "mdi:lan",
-    note: "Integration > via_device chain > Entity.",
-  },
-  type: { name: "Type", icon: "mdi:shape-outline", note: "Domain > device class > Entity." },
-  labels: {
-    name: "Labels",
-    icon: "mdi:label-outline",
-    note: "Labels are many-to-many: entities can repeat here.",
-  },
-};
 
 type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResult };
 
@@ -90,7 +73,7 @@ export class EntityExplorerTreePane extends LitElement {
     // Scrolling before the virtualizer lays out the new items lands on the
     // old list's geometry and does nothing.
     await virtualizer.layoutComplete;
-    virtualizer.element(index)?.scrollIntoView({ block: "center" });
+    virtualizer.element(index)?.scrollIntoView({ block: "nearest" });
   }
 
   private items(): Item[] {
@@ -255,7 +238,6 @@ export class EntityExplorerTreePane extends LitElement {
       flex-direction: column;
       min-height: 0;
       background: var(--card-background-color);
-      border-right: 1px solid var(--divider-color);
       --mdc-icon-size: 16px;
     }
 
@@ -371,14 +353,16 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--secondary-text-color);
     }
 
+    /* The virtualizer positions rows absolutely, so the scroller's padding
+       does not shrink them. The width leaves the same gap on both sides. */
     .row {
       display: flex;
       align-items: center;
       gap: 4px;
-      width: 100%;
+      width: calc(100% - 12px);
       box-sizing: border-box;
       height: 28px;
-      padding-right: 8px;
+      padding-right: 10px;
       border-radius: 6px;
       font-size: 13.5px;
       white-space: nowrap;
@@ -518,7 +502,7 @@ function folderIcon(node: TreeNode): string {
   }
 }
 
-customElements.define("ee-tree-pane", EntityExplorerTreePane);
+define("ee-tree-pane", EntityExplorerTreePane);
 
 declare global {
   interface HTMLElementTagNameMap {
