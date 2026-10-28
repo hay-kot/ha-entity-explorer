@@ -20,6 +20,7 @@ type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResu
 //   ee-select        detail: node id
 //   ee-query-change  detail: string
 //   ee-chip-toggle   detail: ChipId
+//   ee-expand-all, ee-collapse-all
 export class EntityExplorerTreePane extends LitElement {
   static properties = {
     hass: { attribute: false },
@@ -31,18 +32,21 @@ export class EntityExplorerTreePane extends LitElement {
     query: { attribute: false },
     chips: { attribute: false },
     entityTotal: { attribute: false },
+    entityTotalUnfiltered: { attribute: false },
   };
 
   declare hass: HomeAssistant;
   declare view: ViewId;
   declare rows: TreeRow[];
-  // Set while a search is active. The pane then lists results, not the tree.
+  // Set while a search or the "Unavailable only" filter is on. The pane then
+  // lists results with their paths, not the tree.
   declare results?: SearchResult[];
   declare expanded: ReadonlySet<string>;
   declare selectedId?: string;
   declare query: string;
   declare chips: ReadonlySet<ChipId>;
   declare entityTotal: number;
+  declare entityTotalUnfiltered: number;
 
   private scrollToSelected = false;
 
@@ -80,11 +84,14 @@ export class EntityExplorerTreePane extends LitElement {
 
   render() {
     const items = this.items();
-    const empty = this.results
+    const empty = this.query.trim()
       ? "No matches in this view"
-      : this.chips.size
-        ? "No items match the filters"
-        : "Nothing to show";
+      : this.chips.has("unavailable")
+        ? "No unavailable entities in this view"
+        : this.chips.size
+          ? "No items match the filters"
+          : "Nothing to show";
+    const filtered = this.entityTotal !== this.entityTotalUnfiltered;
 
     return html`
       <div class="head">
@@ -101,17 +108,37 @@ export class EntityExplorerTreePane extends LitElement {
             `,
           )}
         </div>
-        <label class="search">
-          <ha-icon icon="mdi:magnify"></ha-icon>
-          <input
-            type="search"
-            placeholder="Search ${VIEWS[this.view].name.toLowerCase()} tree"
-            aria-label="Search"
-            .value=${this.query}
-            @input=${(e: InputEvent) =>
-              this.emit("ee-query-change", (e.target as HTMLInputElement).value)}
-          />
-        </label>
+        <div class="search-row">
+          <label class="search">
+            <ha-icon icon="mdi:magnify"></ha-icon>
+            <input
+              type="search"
+              placeholder="Search ${VIEWS[this.view].name.toLowerCase()}"
+              aria-label="Search"
+              .value=${this.query}
+              @input=${(e: InputEvent) =>
+                this.emit("ee-query-change", (e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <button
+            class="icon"
+            title="Expand all"
+            aria-label="Expand all"
+            ?disabled=${Boolean(this.results)}
+            @click=${() => this.emit("ee-expand-all", undefined)}
+          >
+            <ha-icon icon="mdi:unfold-more-horizontal"></ha-icon>
+          </button>
+          <button
+            class="icon"
+            title="Collapse all"
+            aria-label="Collapse all"
+            ?disabled=${Boolean(this.results)}
+            @click=${() => this.emit("ee-collapse-all", undefined)}
+          >
+            <ha-icon icon="mdi:unfold-less-horizontal"></ha-icon>
+          </button>
+        </div>
         <div class="chips">
           ${CHIPS.map(
             (chip) => html`
@@ -120,7 +147,8 @@ export class EntityExplorerTreePane extends LitElement {
                 aria-pressed=${this.chips.has(chip.id)}
                 @click=${() => this.emit("ee-chip-toggle", chip.id)}
               >
-                <ha-icon .icon=${chip.icon}></ha-icon>${chip.label}
+                <ha-icon .icon=${this.chips.has(chip.id) ? "mdi:check" : chip.icon}></ha-icon
+                ><span>${chip.label}</span>
               </button>
             `,
           )}
@@ -152,7 +180,10 @@ export class EntityExplorerTreePane extends LitElement {
           </div>`
         : html`<div class="empty">${empty}</div>`}
       <div class="foot">
-        <span>${this.entityTotal} entities</span>
+        <span
+          >${filtered ? `${this.entityTotal} of ${this.entityTotalUnfiltered}` : this.entityTotal}
+          entities</span
+        >
         ${this.view === "location"
           ? html`<span class="key"><i></i>area override</span><span>1 of 2 = split device</span>`
           : nothing}
@@ -229,6 +260,7 @@ export class EntityExplorerTreePane extends LitElement {
       display: flex;
       flex-direction: column;
       min-height: 0;
+      container-type: inline-size;
       background: var(--card-background-color);
       --mdc-icon-size: 16px;
     }
@@ -237,6 +269,59 @@ export class EntityExplorerTreePane extends LitElement {
       font: inherit;
       color: inherit;
       cursor: pointer;
+    }
+
+    /* ha-icon is inline by default and sits off center in a flex row. */
+    .seg ha-icon,
+    .search ha-icon,
+    .chip ha-icon,
+    .note ha-icon,
+    button.icon ha-icon {
+      display: flex;
+      flex: none;
+    }
+
+    .search-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .search-row .search {
+      flex: 1;
+      min-width: 0;
+    }
+
+    button.icon {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: none;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 20px;
+    }
+
+    button.icon:hover:not([disabled]) {
+      background: rgba(var(--rgb-primary-text-color), 0.06);
+      color: var(--primary-text-color);
+    }
+
+    button.icon[disabled] {
+      color: var(--disabled-text-color);
+      cursor: default;
+    }
+
+    /* A narrow tree keeps the view switcher on one line by dropping labels;
+       each button keeps its name as a tooltip. */
+    @container (max-width: 380px) {
+      .seg button span {
+        display: none;
+      }
     }
 
     .head {

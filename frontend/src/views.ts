@@ -22,7 +22,7 @@ export const VIEWS: Record<ViewId, { name: string; icon: string; note: string }>
 export type ChipId = "unavailable" | "hide-diagnostic" | "hide-hidden";
 
 export const CHIPS: { id: ChipId; label: string; icon: string }[] = [
-  { id: "unavailable", label: "Unavailable", icon: "mdi:alert-circle-outline" },
+  { id: "unavailable", label: "Unavailable only", icon: "mdi:alert-circle-outline" },
   { id: "hide-diagnostic", label: "Hide diagnostic", icon: "mdi:eye-off-outline" },
   { id: "hide-hidden", label: "Hide hidden", icon: "mdi:eye-off" },
 ];

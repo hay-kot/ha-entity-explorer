@@ -53,7 +53,6 @@ export class EntityExplorerPanel extends LitElement {
     panel: { attribute: false },
     view: { state: true },
     expanded: { state: true },
-    collapsedWhileFiltering: { state: true },
     selection: { state: true },
     query: { state: true },
     chips: { state: true },
@@ -67,9 +66,6 @@ export class EntityExplorerPanel extends LitElement {
 
   declare private view: ViewId;
   declare private expanded: Map<ViewId, ReadonlySet<string>>;
-  // While a filter is on, every folder starts open so matches are visible.
-  // This set tracks the folders the user closed since the filter changed.
-  declare private collapsedWhileFiltering: ReadonlySet<string>;
   declare private selection?: Selection;
   declare private query: string;
   declare private chips: ReadonlySet<ChipId>;
@@ -95,7 +91,6 @@ export class EntityExplorerPanel extends LitElement {
     this.narrow = false;
     this.view = "location";
     this.expanded = new Map();
-    this.collapsedWhileFiltering = new Set();
     this.query = "";
     this.chips = new Set();
     this.extras = EMPTY_EXTRAS;
@@ -288,13 +283,6 @@ export class EntityExplorerPanel extends LitElement {
 
   private onToggle(e: CustomEvent<string>) {
     const id = e.detail;
-    if (this.chips.size) {
-      const next = new Set(this.collapsedWhileFiltering);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      this.collapsedWhileFiltering = next;
-      return;
-    }
     const roots = this.roots(this.view);
     this.setExpanded([id], !this.expandedFor(this.view, roots).has(id));
   }
@@ -405,7 +393,29 @@ export class EntityExplorerPanel extends LitElement {
     if (next.has(e.detail)) next.delete(e.detail);
     else next.add(e.detail);
     this.chips = next;
-    this.collapsedWhileFiltering = new Set();
+  }
+
+  private expandAll() {
+    const ids: string[] = [];
+    const visit = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (!node.children.length) continue;
+        ids.push(node.id);
+        visit(node.children);
+      }
+    };
+    visit(this.visibleTree());
+    this.setExpanded(ids, true);
+  }
+
+  private collapseAll() {
+    this.expanded = new Map(this.expanded).set(this.view, new Set());
+    saveExpanded(this.view, new Set());
+  }
+
+  private visibleTree(): TreeNode[] {
+    const roots = this.roots(this.view);
+    return this.chips.size ? filterTree(roots, this.keep) : roots;
   }
 
   private toggleMenu() {
@@ -416,10 +426,12 @@ export class EntityExplorerPanel extends LitElement {
     if (!this.hass) return nothing;
 
     const roots = this.roots(this.view);
-    const filtering = this.chips.size > 0;
-    const tree = filtering ? filterTree(roots, this.keep) : roots;
-    const expanded = filtering ? openFolders(tree, this.collapsedWhileFiltering) : this.expandedFor(this.view, roots);
-    const results = this.query.trim() ? searchTree(tree, this.query) : undefined;
+    const tree = this.visibleTree();
+    const expanded = this.expandedFor(this.view, roots);
+    // "Unavailable only" is for finding things, so it lists matches with
+    // their paths the way a search does. The hide filters keep the tree.
+    const flat = Boolean(this.query.trim()) || this.chips.has("unavailable");
+    const results = flat ? searchTree(tree, this.query) : undefined;
     const selected = this.selection ? findNode(roots, this.selection.id) : undefined;
 
     return html`
@@ -442,11 +454,14 @@ export class EntityExplorerPanel extends LitElement {
           .query=${this.query}
           .chips=${this.chips}
           .entityTotal=${distinctEntityCount(tree)}
+          .entityTotalUnfiltered=${distinctEntityCount(roots)}
           @ee-view-change=${this.onViewChange}
           @ee-toggle=${this.onToggle}
           @ee-select=${this.onSelect}
           @ee-query-change=${(e: CustomEvent<string>) => (this.query = e.detail)}
           @ee-chip-toggle=${this.onChipToggle}
+          @ee-expand-all=${this.expandAll}
+          @ee-collapse-all=${this.collapseAll}
         ></ee-tree-pane>
         ${this.narrow
           ? nothing
@@ -571,19 +586,6 @@ export class EntityExplorerPanel extends LitElement {
       background: var(--primary-color);
     }
   `;
-}
-
-function openFolders(roots: TreeNode[], closed: ReadonlySet<string>): ReadonlySet<string> {
-  const open = new Set<string>();
-  const visit = (nodes: TreeNode[]) => {
-    for (const node of nodes) {
-      if (!node.children.length) continue;
-      if (!closed.has(node.id)) open.add(node.id);
-      visit(node.children);
-    }
-  };
-  visit(roots);
-  return open;
 }
 
 define("entity-explorer-panel", EntityExplorerPanel);

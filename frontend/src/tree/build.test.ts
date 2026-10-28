@@ -250,6 +250,10 @@ describe("rows", () => {
     expect(results[0].path).toEqual(["Outside", "Backyard", "porch_relay"]);
   });
 
+  it("lists every entity for a blank search", () => {
+    expect(searchTree(roots, "  ")).toHaveLength(distinctEntityCount(roots));
+  });
+
   it("finds a node by id and an entity by entity id", () => {
     const hit = findEntity(roots, "switch.patio_lights")!;
     expect(hit.ancestors.map((n) => n.label)).toEqual(["Outside", "Backyard", "porch_relay"]);

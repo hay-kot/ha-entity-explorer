@@ -47,15 +47,16 @@ export function filterTree(roots: TreeNode[], keep: (entityId: string) => boolea
   return prune(roots);
 }
 
+// Entities whose name or id contains the query. A blank query lists every
+// entity, which gives filters a flat list with paths too.
 export function searchTree(roots: TreeNode[], query: string): SearchResult[] {
   const needle = query.trim().toLowerCase();
-  if (!needle) return [];
   const results: SearchResult[] = [];
   const visit = (nodes: TreeNode[], path: string[]) => {
     for (const node of nodes) {
       if (node.entityId) {
         const haystack = `${node.label} ${node.entityId}`.toLowerCase();
-        if (haystack.includes(needle)) results.push({ node, path });
+        if (!needle || haystack.includes(needle)) results.push({ node, path });
         continue;
       }
       visit(node.children, [...path, node.label]);
