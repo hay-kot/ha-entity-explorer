@@ -1,6 +1,16 @@
 # https://www.home-assistant.io/integrations/default_config/
 default_config:
 
+# Demo devices, entities and areas, so the tree has something to show.
+# https://www.home-assistant.io/integrations/demo/
+demo:
+
+# Targets for the UI editors, so automations, scripts and scenes made in the
+# dev instance load and show up in the References tab.
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
 # https://www.home-assistant.io/integrations/homeassistant/
 homeassistant:
   debug: true

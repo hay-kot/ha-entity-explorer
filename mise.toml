@@ -26,13 +26,22 @@ description = "Rebuild the panel bundle on change"
 dir = "frontend"
 run = "pnpm run watch"
 
+[tasks.test]
+description = "Run frontend unit tests"
+dir = "frontend"
+run = "pnpm test"
+
 [tasks.develop]
 description = "Run Home Assistant with the integration loaded"
 depends = ["build"]
 # HA imports custom_components from the directory on sys.path that holds it,
 # and config/ lives next to it at the repo root.
 env = { PYTHONPATH = "{{config_root}}" }
-run = "uv run hass --config config --debug"
+run = [
+    # configuration.yaml includes these, and HA fails to load a missing include.
+    "touch config/automations.yaml config/scripts.yaml config/scenes.yaml",
+    "uv run hass --config config --debug",
+]
 
 [tasks.lint]
 description = "Lint and typecheck Python and TypeScript"
@@ -50,8 +59,9 @@ run = [
 ]
 
 [tasks.check]
-description = "Run all checks for PRs (lint, build)"
+description = "Run all checks for PRs (lint, test, build)"
 run = [
     { task = "lint" },
+    { task = "test" },
     { task = "build" },
 ]

@@ -48,13 +48,19 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     """Register the sidebar panel."""
+    # The static path sends no cache headers, so browsers cache the bundle by
+    # its Last-Modified date and keep an old build after an update. A query
+    # string tied to the build changes the URL whenever the bundle does.
+    bundle_mtime = await hass.async_add_executor_job(
+        lambda: int((FRONTEND_DIR / PANEL_BUNDLE).stat().st_mtime)
+    )
     await panel_custom.async_register_panel(
         hass,
         frontend_url_path=PANEL_URL_PATH,
         webcomponent_name=PANEL_ELEMENT,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        module_url=f"{STATIC_URL}/{PANEL_BUNDLE}",
+        module_url=f"{STATIC_URL}/{PANEL_BUNDLE}?v={bundle_mtime}",
         # Admin-only until the spike confirms which registry commands
         # non-admin users can call.
         require_admin=True,
