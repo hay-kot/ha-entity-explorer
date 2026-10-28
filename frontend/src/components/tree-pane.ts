@@ -254,35 +254,42 @@ export class EntityExplorerTreePane extends LitElement {
             class="icon small"
             title="Tree options"
             aria-label="Tree options"
-            aria-haspopup="menu"
+            aria-haspopup="dialog"
             aria-expanded=${String(this.popup === "options")}
             @click=${() => this.togglePopup("options")}
           >
             <ha-icon icon="mdi:dots-horizontal"></ha-icon>
           </button>
           ${this.popup === "options"
-            ? html`<div class="menu" role="menu" aria-label="Tree options">
-                <div class="menu-title">Tree size</div>
-                ${TREE_SIZES.map(
-                  (size) => html`<button
-                    role="menuitemradio"
-                    aria-checked=${String(this.size === size.id)}
-                    @click=${() => this.emit("ee-size-change", size.id)}
-                  >
-                    <ha-icon .icon=${this.size === size.id ? "mdi:check" : ""}></ha-icon
-                    >${size.label}
-                  </button>`,
-                )}
-                ${this.view === "network"
-                  ? html`<div class="menu-title">Network</div>
-                      <button
-                        role="menuitemcheckbox"
-                        aria-checked=${String(this.groupNetwork)}
-                        @click=${() => this.emit("ee-group-network-change", !this.groupNetwork)}
+            ? html`<div class="menu" role="dialog" aria-label="Tree options">
+                <div class="menu-section">
+                  <div class="menu-title">Tree size</div>
+                  <div class="seg sizes" role="radiogroup" aria-label="Tree size">
+                    ${TREE_SIZES.map(
+                      (size) => html`<button
+                        role="radio"
+                        aria-checked=${String(this.size === size.id)}
+                        @click=${() => this.emit("ee-size-change", size.id)}
                       >
-                        <ha-icon .icon=${this.groupNetwork ? "mdi:check" : ""}></ha-icon>Group by
-                        integration type
-                      </button>`
+                        ${size.label}
+                      </button>`,
+                    )}
+                  </div>
+                </div>
+                ${this.view === "network"
+                  ? html`<label class="menu-section toggle">
+                      <span>Group by integration type</span>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        .checked=${this.groupNetwork}
+                        @change=${(e: Event) =>
+                          this.emit(
+                            "ee-group-network-change",
+                            (e.target as HTMLInputElement).checked,
+                          )}
+                      />
+                    </label>`
                   : nothing}
               </div>`
             : nothing}
@@ -731,47 +738,91 @@ export class EntityExplorerTreePane extends LitElement {
     .menu {
       position: absolute;
       right: 0;
-      bottom: calc(100% + 8px);
+      bottom: calc(100% + 10px);
       z-index: 2;
       display: flex;
       flex-direction: column;
-      min-width: 160px;
-      padding: 6px 0;
+      width: 260px;
       border-radius: 12px;
       background: var(--card-background-color);
-      box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.24));
       border: 1px solid var(--divider-color);
-      --mdc-icon-size: 18px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      color: var(--primary-text-color);
+      font-size: 14px;
+    }
+
+    .menu-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 14px;
+    }
+
+    .menu-section + .menu-section {
+      border-top: 1px solid var(--divider-color);
     }
 
     .menu-title {
-      padding: 6px 16px;
       font-size: 12px;
       font-weight: 500;
       color: var(--secondary-text-color);
     }
 
-    .menu button {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      height: 36px;
-      padding: 0 16px;
-      border: 0;
-      background: none;
-      font-size: 14px;
-      text-align: left;
-      white-space: nowrap;
+    .seg.sizes {
+      grid-template-columns: repeat(3, 1fr);
     }
 
-    .menu button ha-icon {
-      display: flex;
-      width: 18px;
+    .seg.sizes button[aria-checked="true"] {
+      background: rgba(var(--rgb-primary-color), 0.12);
       color: var(--primary-color);
+      font-weight: 500;
     }
 
-    .menu button:hover {
-      background: rgba(var(--rgb-primary-text-color), 0.06);
+    .toggle {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    /* A plain checkbox drawn as a switch: HA's ha-switch is not guaranteed
+       to be loaded when the panel opens. */
+    .toggle input {
+      appearance: none;
+      flex: none;
+      position: relative;
+      width: 34px;
+      height: 20px;
+      margin: 0;
+      border-radius: 10px;
+      background: var(--disabled-text-color);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .toggle input::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--card-background-color);
+      transition: transform 0.15s;
+    }
+
+    .toggle input:checked {
+      background: var(--primary-color);
+    }
+
+    .toggle input:checked::after {
+      transform: translateX(14px);
+    }
+
+    .toggle input:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
     }
 
     .key {
