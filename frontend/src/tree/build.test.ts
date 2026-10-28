@@ -160,6 +160,11 @@ describe("network view", () => {
     ]);
   });
 
+  it("lists integrations at the top without grouping", () => {
+    const flat = buildView("network", registry(), { groupNetwork: false });
+    expect(flat.map((n) => n.label)).toEqual(["Template", "Z-Wave", "Zigbee Home Automation"]);
+  });
+
   it("nests devices along the via_device chain", () => {
     expect(shape(at(roots, "Devices & hubs", "Zigbee Home Automation").children)).toEqual([
       [
@@ -258,8 +263,13 @@ describe("synthetic fixture", () => {
   const reg = syntheticRegistry({ entities: 1500 });
   const total = Object.keys(reg.entities).length;
 
-  it.each<ViewId>(["location", "network", "type"])("%s view holds each entity once", (view) => {
-    const counts = entityOccurrences(buildView(view, reg));
+  it.each<[ViewId, boolean]>([
+    ["location", true],
+    ["network", true],
+    ["network", false],
+    ["type", true],
+  ])("%s view holds each entity once (grouped network: %s)", (view, groupNetwork) => {
+    const counts = entityOccurrences(buildView(view, reg, { groupNetwork }));
     expect(counts.size).toBe(total);
     expect([...counts.values()].every((c) => c === 1)).toBe(true);
   });

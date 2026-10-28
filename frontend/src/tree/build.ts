@@ -5,13 +5,18 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 
 const SENSOR_DOMAINS_WITH_CLASSES = new Set(["sensor", "binary_sensor"]);
 
-export function buildView(view: ViewId, reg: Registry): TreeNode[] {
+export interface BuildOptions {
+  // Puts Network integrations under integration type folders. On by default.
+  groupNetwork?: boolean;
+}
+
+export function buildView(view: ViewId, reg: Registry, options: BuildOptions = {}): TreeNode[] {
   const index = indexRegistry(reg);
   switch (view) {
     case "location":
       return buildLocation(reg, index);
     case "network":
-      return buildNetwork(reg, index);
+      return buildNetwork(reg, index, options.groupNetwork ?? true);
     case "type":
       return buildType(reg, index);
     case "labels":
@@ -256,7 +261,7 @@ function networkCategory(reg: Registry, domain: string) {
   return NETWORK_CATEGORIES.find((c) => c.types.includes(type)) ?? NETWORK_CATEGORIES[0];
 }
 
-function buildNetwork(reg: Registry, index: RegistryIndex): TreeNode[] {
+function buildNetwork(reg: Registry, index: RegistryIndex, grouped: boolean): TreeNode[] {
   const root = "network";
   const entryOf = (device: DeviceRegistryEntry) =>
     (device.primary_config_entry && reg.entryDomains[device.primary_config_entry]
@@ -322,12 +327,15 @@ function buildNetwork(reg: Registry, index: RegistryIndex): TreeNode[] {
   const integrationNode = (domain: string) => {
     let node = integrations.get(domain);
     if (!node) {
-      const parent = categoryNode(domain);
-      node = folder(parent.id, `integration:${domain}`, "integration", integrationName(reg, domain), {
-        domain,
-        icon: "mdi:puzzle-outline",
-      });
-      parent.children.push(node);
+      const parent = grouped ? categoryNode(domain) : undefined;
+      node = folder(
+        parent?.id ?? root,
+        `integration:${domain}`,
+        "integration",
+        integrationName(reg, domain),
+        { domain, icon: "mdi:puzzle-outline" },
+      );
+      parent?.children.push(node);
       integrations.set(domain, node);
     }
     return node;
@@ -388,12 +396,14 @@ function buildNetwork(reg: Registry, index: RegistryIndex): TreeNode[] {
     node.children.push(deviceTree(node.id, device));
   }
 
-  const roots = NETWORK_CATEGORIES.flatMap((c) => {
-    const node = categories.get(c.key);
-    if (!node) return [];
-    sortByLabel(node.children);
-    return [node];
-  });
+  const roots = grouped
+    ? NETWORK_CATEGORIES.flatMap((c) => {
+        const node = categories.get(c.key);
+        if (!node) return [];
+        sortByLabel(node.children);
+        return [node];
+      })
+    : sortByLabel([...integrations.values()]);
   if (unregistered.length) {
     const group = folder(root, "unregistered", "group", "Not in entity registry", {
       icon: "mdi:help-circle-outline",

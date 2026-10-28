@@ -6,6 +6,7 @@ import { TREE_SIZES, type TreeSize } from "./views";
 
 const TREE_WIDTH_KEY = "entity-explorer.tree-width";
 const TREE_SIZE_KEY = "entity-explorer.tree-size";
+const GROUP_NETWORK_KEY = "entity-explorer.group-network";
 const expandedKey = (view: ViewId) => `entity-explorer.expanded.${view}`;
 // Keeps the stored list bounded when folders are opened and never closed.
 const EXPANDED_LIMIT = 5000;
@@ -41,6 +42,23 @@ export function saveTreeSize(size: TreeSize) {
     localStorage.setItem(TREE_SIZE_KEY, size);
   } catch {
     // Ignored: the size then lasts until the page reloads.
+  }
+}
+
+export function loadGroupNetwork(): boolean | undefined {
+  try {
+    const value = localStorage.getItem(GROUP_NETWORK_KEY);
+    return value === null ? undefined : value === "true";
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveGroupNetwork(grouped: boolean) {
+  try {
+    localStorage.setItem(GROUP_NETWORK_KEY, String(grouped));
+  } catch {
+    // Ignored: the setting then lasts until the page reloads.
   }
 }
 

@@ -9,7 +9,7 @@ export const VIEWS: Record<ViewId, { name: string; icon: string; note: string }>
   network: {
     name: "Network",
     icon: "mdi:lan",
-    note: "Category > Integration > via_device chain > Entity.",
+    note: "Integration > via_device chain > Entity.",
   },
   type: { name: "Type", icon: "mdi:shape-outline", note: "Domain > device class > Entity." },
   labels: {

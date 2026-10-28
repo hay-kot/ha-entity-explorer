@@ -17,9 +17,11 @@ import {
 import { define } from "./define";
 import {
   loadExpanded,
+  loadGroupNetwork,
   loadTreeSize,
   loadTreeWidth,
   saveExpanded,
+  saveGroupNetwork,
   saveTreeSize,
   saveTreeWidth,
 } from "./persist";
@@ -66,6 +68,7 @@ export class EntityExplorerPanel extends LitElement {
     extras: { state: true },
     treeWidth: { state: true },
     treeSize: { state: true },
+    groupNetwork: { state: true },
   };
 
   declare hass?: HomeAssistant;
@@ -80,6 +83,7 @@ export class EntityExplorerPanel extends LitElement {
   declare private extras: RegistryExtras;
   declare private treeWidth: number;
   declare private treeSize: TreeSize;
+  declare private groupNetwork: boolean;
 
   private registryCache = new RegistryCache();
   private trees = new Map<ViewId, TreeNode[]>();
@@ -105,6 +109,7 @@ export class EntityExplorerPanel extends LitElement {
     this.extras = EMPTY_EXTRAS;
     this.treeWidth = storedTreeWidth();
     this.treeSize = loadTreeSize() ?? "default";
+    this.groupNetwork = loadGroupNetwork() ?? true;
   }
 
   disconnectedCallback() {
@@ -258,7 +263,7 @@ export class EntityExplorerPanel extends LitElement {
     }
     let roots = this.trees.get(view);
     if (!roots) {
-      roots = buildView(view, registry);
+      roots = buildView(view, registry, { groupNetwork: this.groupNetwork });
       this.trees.set(view, roots);
     }
     return roots;
@@ -345,6 +350,16 @@ export class EntityExplorerPanel extends LitElement {
       true,
     );
     this.revealInTree();
+  }
+
+  private onGroupNetworkChange(e: CustomEvent<boolean>) {
+    this.groupNetwork = e.detail;
+    saveGroupNetwork(e.detail);
+    this.trees.delete("network");
+    this.referencesCache = undefined;
+    // Node ids change with the grouping. An entity keeps its selection; a
+    // selected folder has no counterpart and clears.
+    if (this.view === "network") this.showInView("network");
   }
 
   private revealInTree() {
@@ -473,6 +488,7 @@ export class EntityExplorerPanel extends LitElement {
           .entityTotal=${distinctEntityCount(tree)}
           .entityTotalUnfiltered=${distinctEntityCount(roots)}
           .size=${this.treeSize}
+          .groupNetwork=${this.groupNetwork}
           @ee-view-change=${this.onViewChange}
           @ee-toggle=${this.onToggle}
           @ee-select=${this.onSelect}
@@ -480,6 +496,7 @@ export class EntityExplorerPanel extends LitElement {
           @ee-chip-toggle=${this.onChipToggle}
           @ee-expand-all=${this.expandAll}
           @ee-collapse-all=${this.collapseAll}
+          @ee-group-network-change=${this.onGroupNetworkChange}
           @ee-size-change=${(e: CustomEvent<TreeSize>) => {
             this.treeSize = e.detail;
             saveTreeSize(e.detail);

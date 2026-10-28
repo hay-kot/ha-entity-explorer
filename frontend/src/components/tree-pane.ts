@@ -22,6 +22,7 @@ type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResu
 //   ee-query-change  detail: string
 //   ee-chip-toggle   detail: ChipId
 //   ee-size-change   detail: TreeSize
+//   ee-group-network-change  detail: boolean
 //   ee-expand-all, ee-collapse-all
 export class EntityExplorerTreePane extends LitElement {
   static properties = {
@@ -36,6 +37,7 @@ export class EntityExplorerTreePane extends LitElement {
     entityTotal: { attribute: false },
     entityTotalUnfiltered: { attribute: false },
     size: { reflect: true },
+    groupNetwork: { attribute: false },
     popup: { state: true },
   };
 
@@ -52,11 +54,13 @@ export class EntityExplorerTreePane extends LitElement {
   declare entityTotal: number;
   declare entityTotalUnfiltered: number;
   declare size: TreeSize;
+  declare groupNetwork: boolean;
   declare private popup?: "info" | "options";
 
   constructor() {
     super();
     this.size = "default";
+    this.groupNetwork = true;
   }
 
   private closeMenuOutside = (e: Event) => {
@@ -233,7 +237,11 @@ export class EntityExplorerTreePane extends LitElement {
           ${this.popup === "info"
             ? html`<div class="menu info" role="dialog" aria-label="About this view">
                 <div class="menu-title">${VIEWS[this.view].name} view</div>
-                <p>${VIEWS[this.view].note}</p>
+                <p>
+                  ${this.view === "network" && this.groupNetwork ? "Integration type > " : ""}${VIEWS[
+                    this.view
+                  ].note}
+                </p>
                 ${this.view === "location"
                   ? html`<p class="key"><i></i>Area set on the entity, overriding its device</p>
                       <p><span class="tag">1 of 2</span> Device split across areas</p>`
@@ -265,6 +273,17 @@ export class EntityExplorerTreePane extends LitElement {
                     >${size.label}
                   </button>`,
                 )}
+                ${this.view === "network"
+                  ? html`<div class="menu-title">Network</div>
+                      <button
+                        role="menuitemcheckbox"
+                        aria-checked=${String(this.groupNetwork)}
+                        @click=${() => this.emit("ee-group-network-change", !this.groupNetwork)}
+                      >
+                        <ha-icon .icon=${this.groupNetwork ? "mdi:check" : ""}></ha-icon>Group by
+                        integration type
+                      </button>`
+                  : nothing}
               </div>`
             : nothing}
         </div>
@@ -742,6 +761,7 @@ export class EntityExplorerTreePane extends LitElement {
       background: none;
       font-size: 14px;
       text-align: left;
+      white-space: nowrap;
     }
 
     .menu button ha-icon {
