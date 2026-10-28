@@ -6,7 +6,10 @@ This is an early scaffold. The panel only shows entity, device and area counts s
 
 ## Install
 
-Entity Explorer ships as a HACS custom integration. After you install it, add it from
+Entity Explorer ships as a HACS custom integration. Add
+`https://github.com/hay-kot/ha-entity-explorer` to HACS as a custom repository with the
+Integration type, then install a release. Each GitHub release carries an `entity_explorer.zip`
+with the built panel bundle. After you install it, add it from
 **Settings > Devices & services > Add integration**. The panel shows up in the sidebar for
 admin users.
 
