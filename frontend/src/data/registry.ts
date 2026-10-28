@@ -11,32 +11,41 @@ import type { Registry } from "../tree/model";
 export interface RegistryExtras {
   labels: LabelRegistryEntry[];
   entryDomains: Record<string, string>;
+  entryTitles: Record<string, string>;
   integrationNames: Record<string, string>;
+  integrationTypes: Record<string, string>;
 }
 
-export const EMPTY_EXTRAS: RegistryExtras = { labels: [], entryDomains: {}, integrationNames: {} };
+export const EMPTY_EXTRAS: RegistryExtras = {
+  labels: [],
+  entryDomains: {},
+  entryTitles: {},
+  integrationNames: {},
+  integrationTypes: {},
+};
 
 export async function fetchLabels(hass: HomeAssistant): Promise<LabelRegistryEntry[]> {
   return hass.callWS<LabelRegistryEntry[]>({ type: "config/label_registry/list" });
 }
 
-export async function fetchEntryDomains(hass: HomeAssistant): Promise<Record<string, string>> {
+export async function fetchEntries(
+  hass: HomeAssistant,
+): Promise<Pick<RegistryExtras, "entryDomains" | "entryTitles">> {
   const entries = await hass.callWS<ConfigEntry[]>({ type: "config_entries/get" });
-  return Object.fromEntries(entries.map((e) => [e.entry_id, e.domain]));
+  return {
+    entryDomains: Object.fromEntries(entries.map((e) => [e.entry_id, e.domain])),
+    entryTitles: Object.fromEntries(entries.map((e) => [e.entry_id, e.title])),
+  };
 }
 
 // manifest/list skips domains it does not know, so unknown platforms fall back
 // to a humanized domain in the tree builders.
-export async function fetchIntegrationNames(
+export async function fetchManifests(
   hass: HomeAssistant,
   domains: string[],
-): Promise<Record<string, string>> {
-  if (!domains.length) return {};
-  const manifests = await hass.callWS<IntegrationManifest[]>({
-    type: "manifest/list",
-    integrations: domains,
-  });
-  return Object.fromEntries(manifests.map((m) => [m.domain, m.name]));
+): Promise<IntegrationManifest[]> {
+  if (!domains.length) return [];
+  return hass.callWS<IntegrationManifest[]>({ type: "manifest/list", integrations: domains });
 }
 
 // Every domain a tree might label: config entry domains, entity platforms and
@@ -72,7 +81,9 @@ export class RegistryCache {
       hass.floors,
       extras.labels,
       extras.entryDomains,
+      extras.entryTitles,
       extras.integrationNames,
+      extras.integrationTypes,
     ];
     if (this.value && key.every((part, i) => part === this.key[i])) return this.value;
 

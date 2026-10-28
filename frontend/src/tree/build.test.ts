@@ -75,7 +75,9 @@ function registry(): Registry {
       { label_id: "energy", name: "energy", icon: null, color: null },
     ],
     entryDomains: { entry_zha: "zha", entry_zwave: "zwave_js" },
+    entryTitles: { entry_zha: "Zigbee stick", entry_zwave: "Z-Wave stick" },
     integrationNames: { zha: "Zigbee Home Automation", zwave_js: "Z-Wave", template: "Template" },
+    integrationTypes: { template: "helper" },
     entityNames: {},
     deviceClasses: { "binary_sensor.kitchen_motion": "occupancy", "sensor.total_power": "power" },
   };
@@ -150,8 +152,16 @@ describe("location view", () => {
 describe("network view", () => {
   const roots = buildView("network", registry());
 
+  it("groups integrations by integration type, devices first", () => {
+    expect(roots.map((n) => n.label)).toEqual(["Devices & hubs", "Helpers"]);
+    expect(at(roots, "Devices & hubs").children.map((n) => n.label)).toEqual([
+      "Z-Wave",
+      "Zigbee Home Automation",
+    ]);
+  });
+
   it("nests devices along the via_device chain", () => {
-    expect(shape(at(roots, "Zigbee Home Automation").children)).toEqual([
+    expect(shape(at(roots, "Devices & hubs", "Zigbee Home Automation").children)).toEqual([
       [
         "coordinator",
         [
@@ -167,7 +177,38 @@ describe("network view", () => {
   });
 
   it("puts device-less entities under their integration", () => {
-    expect(shape(at(roots, "Template").children)).toEqual(["sensor.house_temp", "sensor.total_power"]);
+    expect(shape(at(roots, "Helpers", "Template").children)).toEqual([
+      "sensor.house_temp",
+      "sensor.total_power",
+    ]);
+  });
+
+  it("splits device-less entities by domain when they span several", () => {
+    const reg = registry();
+    reg.entities["binary_sensor.anyone_home"] = entity("binary_sensor.anyone_home", {
+      platform: "template",
+    });
+    const roots = buildView("network", reg);
+    expect(shape(at(roots, "Helpers", "Template").children)).toEqual([
+      ["Binary sensor", ["binary_sensor.anyone_home"]],
+      ["Sensor", ["sensor.house_temp", "sensor.total_power"]],
+    ]);
+  });
+
+  it("adds a config entry level only when an integration has several entries", () => {
+    const reg = registry();
+    reg.entryDomains.entry_zwave_2 = "zwave_js";
+    reg.entryTitles.entry_zwave_2 = "Garage stick";
+    reg.devices.garage_relay = device("garage_relay", {
+      primary_config_entry: "entry_zwave_2",
+      config_entries: ["entry_zwave_2"],
+    });
+    const roots = buildView("network", reg);
+    expect(shape(at(roots, "Devices & hubs", "Z-Wave").children)).toEqual([
+      ["Garage stick", ["garage_relay"]],
+      ["Z-Wave stick", [["porch_relay", ["switch.patio_lights", "switch.porch_light"]]]],
+    ]);
+    expect(at(roots, "Devices & hubs", "Z-Wave", "Garage stick").entryId).toBe("entry_zwave_2");
   });
 
   it("groups entities without a registry entry on their own", () => {

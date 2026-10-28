@@ -240,21 +240,39 @@ function buildLocation(reg: Registry, index: RegistryIndex): TreeNode[] {
   return finish(roots);
 }
 
-// ---------- Network: Integration > via_device chain > Entity ----------
+// ---------- Network: Category > Integration > Entry > via_device chain > Entity ----------
+
+// Grouped like the manifest integration_type. HA treats a missing type as
+// "hub", so unknown and not yet loaded integrations land under devices.
+const NETWORK_CATEGORIES: { key: string; label: string; icon: string; types: string[] }[] = [
+  { key: "devices", label: "Devices & hubs", icon: "mdi:router-wireless", types: ["hub", "device", "hardware"] },
+  { key: "services", label: "Services", icon: "mdi:cloud-outline", types: ["service"] },
+  { key: "helpers", label: "Helpers", icon: "mdi:tools", types: ["helper"] },
+  { key: "system", label: "System", icon: "mdi:cog-outline", types: ["system", "entity", "virtual"] },
+];
+
+function networkCategory(reg: Registry, domain: string) {
+  const type = reg.integrationTypes[domain] ?? "hub";
+  return NETWORK_CATEGORIES.find((c) => c.types.includes(type)) ?? NETWORK_CATEGORIES[0];
+}
 
 function buildNetwork(reg: Registry, index: RegistryIndex): TreeNode[] {
   const root = "network";
-  const integrationOf = (device: DeviceRegistryEntry) =>
-    (device.primary_config_entry && reg.entryDomains[device.primary_config_entry]) ||
-    device.config_entries.map((id) => reg.entryDomains[id]).find(Boolean) ||
-    "unknown";
+  const entryOf = (device: DeviceRegistryEntry) =>
+    (device.primary_config_entry && reg.entryDomains[device.primary_config_entry]
+      ? device.primary_config_entry
+      : device.config_entries.find((id) => reg.entryDomains[id])) ?? undefined;
+  const integrationOf = (device: DeviceRegistryEntry) => {
+    const entry = entryOf(device);
+    return entry ? reg.entryDomains[entry] : "unknown";
+  };
 
   const childDevices = new Map<string, DeviceRegistryEntry[]>();
   const rootDevices = new Map<string, DeviceRegistryEntry[]>();
-  const push = <K>(map: Map<K, DeviceRegistryEntry[]>, key: K, device: DeviceRegistryEntry) => {
+  const push = <K, V>(map: Map<K, V[]>, key: K, value: V) => {
     const list = map.get(key);
-    if (list) list.push(device);
-    else map.set(key, [device]);
+    if (list) list.push(value);
+    else map.set(key, [value]);
   };
   for (const device of Object.values(reg.devices)) {
     if (device.via_device_id && reg.devices[device.via_device_id]) {
@@ -283,37 +301,83 @@ function buildNetwork(reg: Registry, index: RegistryIndex): TreeNode[] {
   const unregistered: EntityRegistryDisplayEntry[] = [];
   const devicelessByPlatform = new Map<string, EntityRegistryDisplayEntry[]>();
   for (const e of index.deviceless) {
-    const platform = e.platform;
-    if (!platform) {
-      unregistered.push(e);
-      continue;
-    }
-    const list = devicelessByPlatform.get(platform);
-    if (list) list.push(e);
-    else devicelessByPlatform.set(platform, [e]);
+    if (e.platform) push(devicelessByPlatform, e.platform, e);
+    else unregistered.push(e);
   }
 
-  const domains = new Set([...rootDevices.keys(), ...devicelessByPlatform.keys()]);
+  const categories = new Map<string, TreeNode>();
+  const categoryNode = (domain: string) => {
+    const category = networkCategory(reg, domain);
+    let node = categories.get(category.key);
+    if (!node) {
+      node = folder(root, `category:${category.key}`, "category", category.label, {
+        icon: category.icon,
+      });
+      categories.set(category.key, node);
+    }
+    return node;
+  };
+
   const integrations = new Map<string, TreeNode>();
   const integrationNode = (domain: string) => {
     let node = integrations.get(domain);
     if (!node) {
-      node = folder(root, `integration:${domain}`, "integration", integrationName(reg, domain), {
+      const parent = categoryNode(domain);
+      node = folder(parent.id, `integration:${domain}`, "integration", integrationName(reg, domain), {
         domain,
         icon: "mdi:puzzle-outline",
       });
+      parent.children.push(node);
       integrations.set(domain, node);
     }
     return node;
   };
 
+  // An integration with one config entry, the common case, skips the entry
+  // level. With several (two Hue bridges, two ESPHome boards) the entry title
+  // is what tells them apart.
+  const rootDeviceNodes = (node: TreeNode, domain: string, devices: DeviceRegistryEntry[]) => {
+    const byEntry = new Map<string, DeviceRegistryEntry[]>();
+    for (const device of devices) push(byEntry, entryOf(device) ?? "", device);
+    if (byEntry.size < 2) return sortByLabel(devices.map((d) => deviceTree(node.id, d)));
+    return sortByLabel(
+      [...byEntry].map(([entryId, list]) => {
+        const entry = folder(node.id, `entry:${entryId}`, "entry", reg.entryTitles[entryId] || entryId, {
+          domain,
+          entryId: entryId || undefined,
+          icon: "mdi:link-variant",
+        });
+        entry.children = sortByLabel(list.map((d) => deviceTree(entry.id, d)));
+        return entry;
+      }),
+    );
+  };
+
+  // Helper-style integrations own entities of many domains (template sensors
+  // and binary sensors, group lights and switches). A long mixed list reads
+  // better split by domain.
+  const devicelessNodes = (node: TreeNode, entities: EntityRegistryDisplayEntry[]) => {
+    const byDomain = new Map<string, EntityRegistryDisplayEntry[]>();
+    for (const e of entities) push(byDomain, entityDomain(e.entity_id), e);
+    if (byDomain.size < 2) return entities.map((e) => entityNode(node.id, reg, e));
+    return sortByLabel(
+      [...byDomain].map(([domain, list]) => {
+        const group = folder(node.id, `domain:${domain}`, "domain", integrationName(reg, domain), {
+          domain,
+        });
+        group.children = list.map((e) => entityNode(group.id, reg, e));
+        return group;
+      }),
+    );
+  };
+
+  const domains = new Set([...rootDevices.keys(), ...devicelessByPlatform.keys()]);
   for (const domain of domains) {
     const node = integrationNode(domain);
-    const devices = (rootDevices.get(domain) ?? []).map((d) => deviceTree(node.id, d));
-    const entities = (devicelessByPlatform.get(domain) ?? []).map((e) =>
-      entityNode(node.id, reg, e),
-    );
-    node.children = [...sortByLabel(devices), ...entities];
+    node.children = [
+      ...rootDeviceNodes(node, domain, rootDevices.get(domain) ?? []),
+      ...devicelessNodes(node, devicelessByPlatform.get(domain) ?? []),
+    ];
   }
 
   // A via_device_id cycle leaves devices that no root reaches. Show them at the
@@ -324,7 +388,12 @@ function buildNetwork(reg: Registry, index: RegistryIndex): TreeNode[] {
     node.children.push(deviceTree(node.id, device));
   }
 
-  const roots = sortByLabel([...integrations.values()]);
+  const roots = NETWORK_CATEGORIES.flatMap((c) => {
+    const node = categories.get(c.key);
+    if (!node) return [];
+    sortByLabel(node.children);
+    return [node];
+  });
   if (unregistered.length) {
     const group = folder(root, "unregistered", "group", "Not in entity registry", {
       icon: "mdi:help-circle-outline",

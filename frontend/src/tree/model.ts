@@ -15,7 +15,9 @@ export type NodeKind =
   | "area"
   | "device"
   | "entity"
+  | "category"
   | "integration"
+  | "entry"
   | "domain"
   | "class"
   | "label"
@@ -34,6 +36,7 @@ export interface TreeNode {
   deviceId?: string;
   areaId?: string;
   domain?: string;
+  entryId?: string;
   // Set on a device node shown in an area other than its own: "1 of 2".
   partial?: string;
   // Set on an entity whose area differs from its device's area.
@@ -53,8 +56,11 @@ export interface Registry {
   labels: LabelRegistryEntry[];
   // Config entry id to integration domain.
   entryDomains: Record<string, string>;
+  entryTitles: Record<string, string>;
   // Integration domain to display name.
   integrationNames: Record<string, string>;
+  // Integration domain to manifest integration_type: hub, service, helper...
+  integrationTypes: Record<string, string>;
   entityNames: Record<string, string>;
   deviceClasses: Record<string, string>;
 }

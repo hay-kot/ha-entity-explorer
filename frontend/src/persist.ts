@@ -1,9 +1,11 @@
 import type { ViewId } from "./tree/model";
+import { TREE_SIZES, type TreeSize } from "./views";
 
 // Per-browser conveniences. Storage can be blocked or cleared, so every read
 // falls back and every write is best effort.
 
 const TREE_WIDTH_KEY = "entity-explorer.tree-width";
+const TREE_SIZE_KEY = "entity-explorer.tree-size";
 const expandedKey = (view: ViewId) => `entity-explorer.expanded.${view}`;
 // Keeps the stored list bounded when folders are opened and never closed.
 const EXPANDED_LIMIT = 5000;
@@ -22,6 +24,23 @@ export function saveTreeWidth(width: number) {
     localStorage.setItem(TREE_WIDTH_KEY, String(width));
   } catch {
     // Ignored: the width then lasts until the page reloads.
+  }
+}
+
+export function loadTreeSize(): TreeSize | undefined {
+  try {
+    const value = localStorage.getItem(TREE_SIZE_KEY);
+    return TREE_SIZES.find((size) => size.id === value)?.id;
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveTreeSize(size: TreeSize) {
+  try {
+    localStorage.setItem(TREE_SIZE_KEY, size);
+  } catch {
+    // Ignored: the size then lasts until the page reloads.
   }
 }
 

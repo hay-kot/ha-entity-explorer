@@ -8,14 +8,21 @@ import type { EntityExplorerTreePane } from "./components/tree-pane";
 import {
   EMPTY_EXTRAS,
   RegistryCache,
-  fetchEntryDomains,
-  fetchIntegrationNames,
+  fetchEntries,
+  fetchManifests,
   fetchLabels,
   referencedDomains,
   type RegistryExtras,
 } from "./data/registry";
 import { define } from "./define";
-import { loadExpanded, loadTreeWidth, saveExpanded, saveTreeWidth } from "./persist";
+import {
+  loadExpanded,
+  loadTreeSize,
+  loadTreeWidth,
+  saveExpanded,
+  saveTreeSize,
+  saveTreeWidth,
+} from "./persist";
 import type { HomeAssistant, PanelInfo } from "./hass";
 import { buildView } from "./tree/build";
 import { VIEW_IDS, type Registry, type TreeNode, type ViewId } from "./tree/model";
@@ -29,7 +36,7 @@ import {
   visibleRows,
 } from "./tree/rows";
 import { readUrlState, urlFor } from "./url";
-import type { ChipId } from "./views";
+import type { ChipId, TreeSize } from "./views";
 
 interface Selection {
   id: string;
@@ -58,6 +65,7 @@ export class EntityExplorerPanel extends LitElement {
     chips: { state: true },
     extras: { state: true },
     treeWidth: { state: true },
+    treeSize: { state: true },
   };
 
   declare hass?: HomeAssistant;
@@ -71,6 +79,7 @@ export class EntityExplorerPanel extends LitElement {
   declare private chips: ReadonlySet<ChipId>;
   declare private extras: RegistryExtras;
   declare private treeWidth: number;
+  declare private treeSize: TreeSize;
 
   private registryCache = new RegistryCache();
   private trees = new Map<ViewId, TreeNode[]>();
@@ -95,6 +104,7 @@ export class EntityExplorerPanel extends LitElement {
     this.chips = new Set();
     this.extras = EMPTY_EXTRAS;
     this.treeWidth = storedTreeWidth();
+    this.treeSize = loadTreeSize() ?? "default";
   }
 
   disconnectedCallback() {
@@ -205,23 +215,30 @@ export class EntityExplorerPanel extends LitElement {
     if (!hass || this.loading) return;
     this.loading = true;
     try {
-      let entryDomains = this.extras.entryDomains;
+      let entries = { entryDomains: this.extras.entryDomains, entryTitles: this.extras.entryTitles };
       const unknownEntry = Object.values(hass.devices).some(
-        (d) => d.primary_config_entry && !(d.primary_config_entry in entryDomains),
+        (d) => d.primary_config_entry && !(d.primary_config_entry in entries.entryDomains),
       );
-      if (unknownEntry || !Object.keys(entryDomains).length) {
-        entryDomains = await fetchEntryDomains(hass);
+      if (unknownEntry || !Object.keys(entries.entryDomains).length) {
+        entries = await fetchEntries(hass);
       }
-      const missing = [...referencedDomains(hass, entryDomains)].filter(
+      const missing = [...referencedDomains(hass, entries.entryDomains)].filter(
         (d) => !this.requestedDomains.has(d),
       );
       missing.forEach((d) => this.requestedDomains.add(d));
-      const names = await fetchIntegrationNames(hass, missing);
-      if (entryDomains !== this.extras.entryDomains || Object.keys(names).length) {
+      const manifests = await fetchManifests(hass, missing);
+      if (entries.entryDomains !== this.extras.entryDomains || manifests.length) {
+        const names = { ...this.extras.integrationNames };
+        const types = { ...this.extras.integrationTypes };
+        for (const m of manifests) {
+          names[m.domain] = m.name;
+          if (m.integration_type) types[m.domain] = m.integration_type;
+        }
         this.extras = {
           ...this.extras,
-          entryDomains,
-          integrationNames: { ...this.extras.integrationNames, ...names },
+          ...entries,
+          integrationNames: names,
+          integrationTypes: types,
         };
       }
     } catch (err) {
@@ -455,6 +472,7 @@ export class EntityExplorerPanel extends LitElement {
           .chips=${this.chips}
           .entityTotal=${distinctEntityCount(tree)}
           .entityTotalUnfiltered=${distinctEntityCount(roots)}
+          .size=${this.treeSize}
           @ee-view-change=${this.onViewChange}
           @ee-toggle=${this.onToggle}
           @ee-select=${this.onSelect}
@@ -462,6 +480,10 @@ export class EntityExplorerPanel extends LitElement {
           @ee-chip-toggle=${this.onChipToggle}
           @ee-expand-all=${this.expandAll}
           @ee-collapse-all=${this.collapseAll}
+          @ee-size-change=${(e: CustomEvent<TreeSize>) => {
+            this.treeSize = e.detail;
+            saveTreeSize(e.detail);
+          }}
         ></ee-tree-pane>
         ${this.narrow
           ? nothing

@@ -57,6 +57,7 @@ export interface ConfigEntry {
 export interface IntegrationManifest {
   domain: string;
   name: string;
+  integration_type?: string;
 }
 
 export interface HassEntity {

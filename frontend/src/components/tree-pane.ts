@@ -11,7 +11,7 @@ import { domainIcon, entityIcon } from "../icons";
 import { isActive, isUnavailable, isUpdateAvailable } from "../state";
 import type { TreeNode, ViewId } from "../tree/model";
 import type { SearchResult, TreeRow } from "../tree/rows";
-import { CHIPS, VIEWS, type ChipId } from "../views";
+import { CHIPS, TREE_SIZES, VIEWS, type ChipId, type TreeSize } from "../views";
 
 type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResult };
 
@@ -21,6 +21,7 @@ type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResu
 //   ee-select        detail: node id
 //   ee-query-change  detail: string
 //   ee-chip-toggle   detail: ChipId
+//   ee-size-change   detail: TreeSize
 //   ee-expand-all, ee-collapse-all
 export class EntityExplorerTreePane extends LitElement {
   static properties = {
@@ -34,6 +35,8 @@ export class EntityExplorerTreePane extends LitElement {
     chips: { attribute: false },
     entityTotal: { attribute: false },
     entityTotalUnfiltered: { attribute: false },
+    size: { reflect: true },
+    popup: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -48,6 +51,38 @@ export class EntityExplorerTreePane extends LitElement {
   declare chips: ReadonlySet<ChipId>;
   declare entityTotal: number;
   declare entityTotalUnfiltered: number;
+  declare size: TreeSize;
+  declare private popup?: "info" | "options";
+
+  constructor() {
+    super();
+    this.size = "default";
+  }
+
+  private closeMenuOutside = (e: Event) => {
+    const anchors = [...this.renderRoot.querySelectorAll(".menu-anchor")];
+    if (!anchors.some((a) => e.composedPath().includes(a))) this.popup = undefined;
+  };
+
+  private closeMenuOnEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") this.popup = undefined;
+  };
+
+  private togglePopup(popup: "info" | "options") {
+    this.popup = this.popup === popup ? undefined : popup;
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.popup = undefined;
+    this.listenForMenuClose(false);
+  }
+
+  private listenForMenuClose(on: boolean) {
+    const method = on ? "addEventListener" : "removeEventListener";
+    document[method]("pointerdown", this.closeMenuOutside);
+    document[method]("keydown", this.closeMenuOnEscape as EventListener);
+  }
 
   private scrollToSelected = false;
 
@@ -58,6 +93,7 @@ export class EntityExplorerTreePane extends LitElement {
 
   protected async updated(changed: PropertyValues) {
     super.updated(changed);
+    if (changed.has("popup")) this.listenForMenuClose(Boolean(this.popup));
     if (!this.scrollToSelected) return;
     this.scrollToSelected = false;
     const index = this.items().findIndex(
@@ -154,7 +190,6 @@ export class EntityExplorerTreePane extends LitElement {
             `,
           )}
         </div>
-        <div class="note"><ha-icon icon="mdi:information-outline"></ha-icon>${VIEWS[this.view].note}</div>
       </div>
       ${items.length
         ? // The directive, not the <lit-virtualizer> element: HA's frontend
@@ -185,9 +220,54 @@ export class EntityExplorerTreePane extends LitElement {
           >${filtered ? `${this.entityTotal} of ${this.entityTotalUnfiltered}` : this.entityTotal}
           entities</span
         >
-        ${this.view === "location"
-          ? html`<span class="key"><i></i>area override</span><span>1 of 2 = split device</span>`
-          : nothing}
+        <div class="menu-anchor">
+          <button
+            class="icon small"
+            title="About this view"
+            aria-label="About this view"
+            aria-expanded=${String(this.popup === "info")}
+            @click=${() => this.togglePopup("info")}
+          >
+            <ha-icon icon="mdi:information-outline"></ha-icon>
+          </button>
+          ${this.popup === "info"
+            ? html`<div class="menu info" role="dialog" aria-label="About this view">
+                <div class="menu-title">${VIEWS[this.view].name} view</div>
+                <p>${VIEWS[this.view].note}</p>
+                ${this.view === "location"
+                  ? html`<p class="key"><i></i>Area set on the entity, overriding its device</p>
+                      <p><span class="tag">1 of 2</span> Device split across areas</p>`
+                  : nothing}
+              </div>`
+            : nothing}
+        </div>
+        <div class="menu-anchor">
+          <button
+            class="icon small"
+            title="Tree options"
+            aria-label="Tree options"
+            aria-haspopup="menu"
+            aria-expanded=${String(this.popup === "options")}
+            @click=${() => this.togglePopup("options")}
+          >
+            <ha-icon icon="mdi:dots-horizontal"></ha-icon>
+          </button>
+          ${this.popup === "options"
+            ? html`<div class="menu" role="menu" aria-label="Tree options">
+                <div class="menu-title">Tree size</div>
+                ${TREE_SIZES.map(
+                  (size) => html`<button
+                    role="menuitemradio"
+                    aria-checked=${String(this.size === size.id)}
+                    @click=${() => this.emit("ee-size-change", size.id)}
+                  >
+                    <ha-icon .icon=${this.size === size.id ? "mdi:check" : ""}></ha-icon
+                    >${size.label}
+                  </button>`,
+                )}
+              </div>`
+            : nothing}
+        </div>
       </div>
     `;
   }
@@ -227,7 +307,7 @@ export class EntityExplorerTreePane extends LitElement {
         aria-level=${depth + 1}
         aria-expanded=${isFolder && !path ? String(expanded) : nothing}
         aria-selected=${String(this.selectedId === node.id)}
-        style="padding-left: ${4 + depth * 12}px"
+        style="--depth: ${depth}"
         title=${stateText ? `${node.label}: ${stateText}` : nothing}
         @click=${() => this.emit("ee-select", node.id)}
         @dblclick=${isFolder && !path ? toggle : nothing}
@@ -277,6 +357,24 @@ export class EntityExplorerTreePane extends LitElement {
       container-type: inline-size;
       background: var(--card-background-color);
       --mdc-icon-size: 16px;
+      --row-height: 36px;
+      --row-font-size: 14px;
+      --row-icon-size: 20px;
+      --row-indent: 16px;
+    }
+
+    :host([size="compact"]) {
+      --row-height: 28px;
+      --row-font-size: 13.5px;
+      --row-icon-size: 16px;
+      --row-indent: 12px;
+    }
+
+    :host([size="large"]) {
+      --row-height: 44px;
+      --row-font-size: 15px;
+      --row-icon-size: 24px;
+      --row-indent: 20px;
     }
 
     button {
@@ -289,7 +387,6 @@ export class EntityExplorerTreePane extends LitElement {
     .seg ha-icon,
     .search ha-icon,
     .chip ha-icon,
-    .note ha-icon,
     button.icon ha-icon {
       display: flex;
       flex: none;
@@ -423,19 +520,11 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--primary-color);
     }
 
-    .note {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 15px;
-    }
-
     .tree {
       flex: 1;
       min-height: 0;
       padding: 4px 6px;
+      --mdc-icon-size: var(--row-icon-size);
     }
 
     .empty {
@@ -452,10 +541,11 @@ export class EntityExplorerTreePane extends LitElement {
       gap: 4px;
       width: calc(100% - 12px);
       box-sizing: border-box;
-      height: 28px;
+      height: var(--row-height);
+      padding-left: calc(4px + var(--depth, 0) * var(--row-indent));
       padding-right: 10px;
       border-radius: 6px;
-      font-size: 13.5px;
+      font-size: var(--row-font-size);
       white-space: nowrap;
       cursor: pointer;
       outline: none;
@@ -476,12 +566,12 @@ export class EntityExplorerTreePane extends LitElement {
     }
 
     .row.result {
-      height: 40px;
+      height: calc(var(--row-height) + 12px);
     }
 
     .chev {
       flex: none;
-      width: 16px;
+      width: var(--row-icon-size);
       display: grid;
       place-items: center;
       color: var(--secondary-text-color);
@@ -571,19 +661,97 @@ export class EntityExplorerTreePane extends LitElement {
     .count {
       margin-left: auto;
       padding-left: 8px;
-      font-size: 12px;
+      font-size: calc(var(--row-font-size) - 1.5px);
       font-weight: 400;
       color: var(--secondary-text-color);
     }
 
     .foot {
       display: flex;
-      gap: var(--ha-space-3, 12px);
+      gap: 4px;
       align-items: center;
       padding: 8px 12px;
       border-top: 1px solid var(--divider-color);
       font-size: 12px;
       color: var(--secondary-text-color);
+    }
+
+    .menu-anchor {
+      position: relative;
+    }
+
+    .foot > span:first-child {
+      margin-right: auto;
+    }
+
+    .menu.info {
+      width: max-content;
+      max-width: 260px;
+      padding: 6px 16px 10px;
+      font-size: 13px;
+      color: var(--primary-text-color);
+    }
+
+    .menu.info .menu-title {
+      padding: 6px 0;
+    }
+
+    .menu.info p {
+      margin: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button.icon.small {
+      width: 28px;
+      height: 28px;
+      margin: -4px -4px -4px 0;
+    }
+
+    .menu {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 8px);
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      min-width: 160px;
+      padding: 6px 0;
+      border-radius: 12px;
+      background: var(--card-background-color);
+      box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0, 0, 0, 0.24));
+      border: 1px solid var(--divider-color);
+      --mdc-icon-size: 18px;
+    }
+
+    .menu-title {
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+    }
+
+    .menu button {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 36px;
+      padding: 0 16px;
+      border: 0;
+      background: none;
+      font-size: 14px;
+      text-align: left;
+    }
+
+    .menu button ha-icon {
+      display: flex;
+      width: 18px;
+      color: var(--primary-color);
+    }
+
+    .menu button:hover {
+      background: rgba(var(--rgb-primary-text-color), 0.06);
     }
 
     .key {

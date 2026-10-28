@@ -9,7 +9,7 @@ export const VIEWS: Record<ViewId, { name: string; icon: string; note: string }>
   network: {
     name: "Network",
     icon: "mdi:lan",
-    note: "Integration > via_device chain > Entity.",
+    note: "Category > Integration > via_device chain > Entity.",
   },
   type: { name: "Type", icon: "mdi:shape-outline", note: "Domain > device class > Entity." },
   labels: {
@@ -25,4 +25,12 @@ export const CHIPS: { id: ChipId; label: string; icon: string }[] = [
   { id: "unavailable", label: "Unavailable only", icon: "mdi:alert-circle-outline" },
   { id: "hide-diagnostic", label: "Hide diagnostic", icon: "mdi:eye-off-outline" },
   { id: "hide-hidden", label: "Hide hidden", icon: "mdi:eye-off" },
+];
+
+export type TreeSize = "compact" | "default" | "large";
+
+export const TREE_SIZES: { id: TreeSize; label: string }[] = [
+  { id: "compact", label: "Compact" },
+  { id: "default", label: "Default" },
+  { id: "large", label: "Large" },
 ];

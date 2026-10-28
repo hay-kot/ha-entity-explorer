@@ -123,6 +123,19 @@ const INTEGRATION_NAMES: Record<string, string> = {
   binary_sensor: "Binary sensor",
 };
 
+// Anything not listed is a hub, as in HA.
+const INTEGRATION_TYPES: Record<string, string> = {
+  frigate: "service",
+  cast: "service",
+  template: "helper",
+  input_boolean: "helper",
+  input_number: "helper",
+  group: "helper",
+  timer: "helper",
+  automation: "system",
+  script: "system",
+};
+
 // Mulberry32: small, seedable, and good enough for test data.
 function random(seed: number): () => number {
   let a = seed >>> 0;
@@ -164,9 +177,11 @@ export function syntheticRegistry(options: FixtureOptions = {}): Registry {
   }));
 
   const entryDomains: Record<string, string> = {};
+  const entryTitles: Record<string, string> = {};
   const entryFor = (domain: string) => {
     const id = `entry_${domain}`;
     entryDomains[id] = domain;
+    entryTitles[id] = INTEGRATION_NAMES[domain] ?? domain;
     return id;
   };
 
@@ -265,7 +280,9 @@ export function syntheticRegistry(options: FixtureOptions = {}): Registry {
     floors,
     labels,
     entryDomains,
+    entryTitles,
     integrationNames: INTEGRATION_NAMES,
+    integrationTypes: INTEGRATION_TYPES,
     entityNames,
     deviceClasses,
   };
