@@ -26,6 +26,11 @@ description = "Rebuild the panel bundle on change"
 dir = "frontend"
 run = "pnpm run watch"
 
+[tasks.test]
+description = "Run frontend unit tests"
+dir = "frontend"
+run = "pnpm test"
+
 [tasks.develop]
 description = "Run Home Assistant with the integration loaded"
 depends = ["build"]
@@ -50,8 +55,9 @@ run = [
 ]
 
 [tasks.check]
-description = "Run all checks for PRs (lint, build)"
+description = "Run all checks for PRs (lint, test, build)"
 run = [
     { task = "lint" },
+    { task = "test" },
     { task = "build" },
 ]

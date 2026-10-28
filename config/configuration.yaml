@@ -1,6 +1,10 @@
 # https://www.home-assistant.io/integrations/default_config/
 default_config:
 
+# Demo devices, entities and areas, so the tree has something to show.
+# https://www.home-assistant.io/integrations/demo/
+demo:
+
 # https://www.home-assistant.io/integrations/homeassistant/
 homeassistant:
   debug: true

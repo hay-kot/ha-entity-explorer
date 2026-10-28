@@ -2,7 +2,10 @@
 
 A Home Assistant sidebar panel that browses entities, devices and areas as trees.
 
-This is an early scaffold. The panel only shows entity, device and area counts so far.
+The panel has four tree views of the same entities: Location (floor, area, device), Network
+(integration and `via_device` chain), Type (domain and device class) and Labels. Search and
+filter chips apply to the current view. Select an entity to see where it sits and open HA's
+more-info dialog.
 
 ## Install
 
@@ -24,7 +27,9 @@ mise run develop  # builds the panel, then starts Home Assistant on http://local
 ```
 
 `develop` uses `config/` as the Home Assistant config directory and loads the integration
-from `custom_components/` at the repo root.
+from `custom_components/` at the repo root. The config enables HA's `demo` integration, so a
+fresh instance has devices and entities to browse. Assign areas, floors and labels in that
+instance to see the Location and Labels views fill in.
 
 | Task | What it does |
 | --- | --- |
@@ -32,9 +37,10 @@ from `custom_components/` at the repo root.
 | `build` | Builds `frontend/` into `custom_components/entity_explorer/frontend/entity-explorer.js` |
 | `watch` | Rebuilds the bundle on change. Reload the browser to pick it up. |
 | `develop` | Builds, then runs Home Assistant |
+| `test` | Vitest unit tests for the tree builders, including a 1500-entity synthetic registry |
 | `lint` | ruff check, ruff format check and the TypeScript typecheck |
 | `fmt` | ruff format and autofix |
-| `check` | `lint` and `build` |
+| `check` | `lint`, `test` and `build` |
 
 The built bundle is gitignored.
 
