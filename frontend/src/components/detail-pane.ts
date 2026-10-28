@@ -207,19 +207,19 @@ export class EntityExplorerDetailPane extends LitElement {
     const actions = html`<div class="icon-actions">
       <button
         class="icon"
-        title="Entity settings"
-        aria-label="Entity settings"
-        @click=${() => this.moreInfo(entityId, "settings")}
-      >
-        <ha-icon icon="mdi:cog-outline"></ha-icon>
-      </button>
-      <button
-        class="icon"
         title="More info"
         aria-label="More info"
         @click=${() => this.moreInfo(entityId)}
       >
         <ha-icon icon="mdi:information-outline"></ha-icon>
+      </button>
+      <button
+        class="icon"
+        title="Entity settings"
+        aria-label="Entity settings"
+        @click=${() => this.moreInfo(entityId, "settings")}
+      >
+        <ha-icon icon="mdi:cog-outline"></ha-icon>
       </button>
     </div>`;
 
