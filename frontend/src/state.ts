@@ -23,8 +23,16 @@ const ACTIVE_STATES = new Set([
   "triggered",
 ]);
 
+// An update entity is "on" when an update is available. That is not
+// activity, and the tree marks it with its own icon.
 export function isActive(stateObj: HassEntity | undefined): boolean {
-  return Boolean(stateObj && ACTIVE_STATES.has(stateObj.state));
+  return Boolean(
+    stateObj && ACTIVE_STATES.has(stateObj.state) && !stateObj.entity_id.startsWith("update."),
+  );
+}
+
+export function isUpdateAvailable(stateObj: HassEntity | undefined): boolean {
+  return Boolean(stateObj?.entity_id.startsWith("update.") && stateObj.state === "on");
 }
 
 export function isUnavailable(stateObj: HassEntity | undefined): boolean {

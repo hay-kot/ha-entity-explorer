@@ -8,6 +8,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { define } from "../define";
 import type { HomeAssistant } from "../hass";
 import { domainIcon, entityIcon } from "../icons";
+import { isActive, isUnavailable, isUpdateAvailable } from "../state";
 import type { TreeNode, ViewId } from "../tree/model";
 import type { SearchResult, TreeRow } from "../tree/rows";
 import { CHIPS, VIEWS, type ChipId } from "../views";
@@ -195,7 +196,11 @@ export class EntityExplorerTreePane extends LitElement {
     const isFolder = node.children.length > 0;
     const expanded = isFolder && !path && this.expanded.has(node.id);
     const stateObj = node.entityId ? this.hass.states[node.entityId] : undefined;
-    const unavailable = stateObj?.state === "unavailable";
+    const unavailable = isUnavailable(stateObj);
+    // Rows carry no state text; it lives in the detail pane and the tooltip.
+    // Only states worth noticing while scanning get an icon.
+    const stateText = stateObj ? this.hass.formatEntityState(stateObj) : undefined;
+    const updateAvailable = isUpdateAvailable(stateObj);
 
     const toggle = (e: Event) => {
       e.stopPropagation();
@@ -223,6 +228,7 @@ export class EntityExplorerTreePane extends LitElement {
         aria-expanded=${isFolder && !path ? String(expanded) : nothing}
         aria-selected=${String(this.selectedId === node.id)}
         style="padding-left: ${4 + depth * 12}px"
+        title=${stateText ? `${node.label}: ${stateText}` : nothing}
         @click=${() => this.emit("ee-select", node.id)}
         @dblclick=${isFolder && !path ? toggle : nothing}
         @keydown=${onKey}
@@ -231,7 +237,13 @@ export class EntityExplorerTreePane extends LitElement {
           ${isFolder && !path ? html`<ha-icon icon="mdi:chevron-right"></ha-icon>` : nothing}
         </span>
         <ha-icon
-          class="icon ${node.entityId ? (unavailable ? "bad" : "") : "folder"}"
+          class="icon ${node.entityId
+            ? unavailable
+              ? "bad"
+              : isActive(stateObj)
+                ? "active"
+                : ""
+            : "folder"}"
           .icon=${node.entityId ? entityIcon(this.hass, node.entityId) : (node.icon ?? folderIcon(node))}
         ></ha-icon>
         <span class="label">
@@ -246,11 +258,13 @@ export class EntityExplorerTreePane extends LitElement {
         ${node.override
           ? html`<span class="override" title="Area set on the entity. It overrides the device area."></span>`
           : nothing}
-        ${stateObj
-          ? html`<span class="state ${unavailable ? "bad" : ""}">${this.hass.formatEntityState(stateObj)}</span>`
-          : isFolder
-            ? html`<span class="count">${node.entityCount}</span>`
-            : nothing}
+        ${unavailable
+          ? html`<ha-icon class="status bad" icon="mdi:alert-circle-outline"></ha-icon>`
+          : updateAvailable
+            ? html`<ha-icon class="status update" icon="mdi:arrow-up-circle"></ha-icon>`
+            : isFolder
+              ? html`<span class="count">${node.entityCount}</span>`
+              : nothing}
       </div>
     `;
   }
@@ -495,6 +509,25 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--disabled-text-color);
     }
 
+    .icon.active {
+      color: var(--state-active-color, #ff9800);
+    }
+
+    .status {
+      flex: none;
+      display: flex;
+      margin-left: auto;
+      padding-left: 8px;
+    }
+
+    .status.bad {
+      color: var(--error-color);
+    }
+
+    .status.update {
+      color: var(--state-update-on-color, var(--primary-color));
+    }
+
     .label {
       min-width: 0;
       overflow: hidden;
@@ -535,17 +568,12 @@ export class EntityExplorerTreePane extends LitElement {
       background: var(--warning-color);
     }
 
-    .state,
     .count {
       margin-left: auto;
       padding-left: 8px;
       font-size: 12px;
       font-weight: 400;
       color: var(--secondary-text-color);
-    }
-
-    .state.bad {
-      color: var(--error-color);
     }
 
     .foot {
