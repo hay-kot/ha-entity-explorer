@@ -14,7 +14,7 @@ export interface ViewReference {
   hits: NodeHit[];
 }
 
-type EntityTab = "state" | "history" | "references" | "settings";
+type EntityTab = "state" | "history" | "references";
 type FolderTab = "items" | "details";
 
 type Related = Partial<Record<string, string[]>>;
@@ -176,16 +176,20 @@ export class EntityExplorerDetailPane extends LitElement {
     tabs: [T, string, string][],
     current: T,
     select: (tab: T) => void,
+    actions: TemplateResult | typeof nothing = nothing,
   ) {
     return html`
-      <div class="tabs" role="tablist">
-        ${tabs.map(
-          ([id, label, icon]) => html`
-            <button role="tab" aria-selected=${current === id} @click=${() => select(id)}>
-              <ha-icon .icon=${icon}></ha-icon>${label}
-            </button>
-          `,
-        )}
+      <div class="tab-bar">
+        <div class="tabs" role="tablist">
+          ${tabs.map(
+            ([id, label, icon]) => html`
+              <button role="tab" aria-selected=${current === id} @click=${() => select(id)}>
+                <ha-icon .icon=${icon}></ha-icon>${label}
+              </button>
+            `,
+          )}
+        </div>
+        ${actions}
       </div>
     `;
   }
@@ -199,8 +203,25 @@ export class EntityExplorerDetailPane extends LitElement {
       ["state", "State", "mdi:information-outline"],
       ["history", "History", "mdi:chart-line"],
       ["references", "References", "mdi:sitemap-outline"],
-      ["settings", "Settings", "mdi:cog-outline"],
     ];
+    const actions = html`<div class="icon-actions">
+      <button
+        class="icon"
+        title="Entity settings"
+        aria-label="Entity settings"
+        @click=${() => this.moreInfo(entityId, "settings")}
+      >
+        <ha-icon icon="mdi:cog-outline"></ha-icon>
+      </button>
+      <button
+        class="icon"
+        title="More info"
+        aria-label="More info"
+        @click=${() => this.moreInfo(entityId)}
+      >
+        <ha-icon icon="mdi:information-outline"></ha-icon>
+      </button>
+    </div>`;
 
     return html`
       <div class="card head">
@@ -231,7 +252,7 @@ export class EntityExplorerDetailPane extends LitElement {
               </div>`
             : nothing}
         </div>
-        ${this.renderTabs(tabs, this.entityTab, (tab) => (this.entityTab = tab))}
+        ${this.renderTabs(tabs, this.entityTab, (tab) => (this.entityTab = tab), actions)}
       </div>
       <div class="card body">${this.renderEntityTab(entityId)}</div>
     `;
@@ -254,21 +275,6 @@ export class EntityExplorerDetailPane extends LitElement {
         return html`<p class="muted">Loading history…</p>`;
       case "references":
         return this.renderReferences(entityId);
-      case "settings":
-        return html`
-          <p class="muted">
-            Name, area, icon, device class and other entity options are edited in Home Assistant's
-            own settings dialog.
-          </p>
-          <div class="actions">
-            <button class="text" @click=${() => this.moreInfo(entityId, "settings")}>
-              <ha-icon icon="mdi:cog-outline"></ha-icon>Open entity settings
-            </button>
-            <button class="text" @click=${() => this.moreInfo(entityId)}>
-              <ha-icon icon="mdi:information-outline"></ha-icon>More info
-            </button>
-          </div>
-        `;
     }
   }
 
@@ -464,13 +470,13 @@ export class EntityExplorerDetailPane extends LitElement {
             const stateObj = this.hass.states[e.entityId!];
             return html`<tr @click=${() => this.emit("ee-select", e.id)}>
               <td>
-                <span class="item-name">
+                <div class="item-name">
                   <ha-icon
                     class=${isActive(stateObj) ? "active" : ""}
                     .icon=${entityIcon(this.hass, e.entityId!)}
-                  ></ha-icon
-                  >${e.label}
-                </span>
+                  ></ha-icon>
+                  <span>${e.label}</span>
+                </div>
               </td>
               <td class="mono">${e.entityId}</td>
               <td class=${isUnavailable(stateObj) ? "bad" : ""}>
@@ -705,11 +711,44 @@ export class EntityExplorerDetailPane extends LitElement {
       color: var(--warning-color);
     }
 
+    .tab-bar {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      margin-top: var(--ha-space-3, 12px);
+    }
+
     .tabs {
       display: flex;
+      flex: 1;
+      min-width: 0;
       gap: 4px;
-      margin-top: var(--ha-space-3, 12px);
       overflow-x: auto;
+    }
+
+    .icon-actions {
+      flex: none;
+      display: flex;
+      gap: 2px;
+      padding-bottom: 4px;
+    }
+
+    button.icon {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: none;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 20px;
+    }
+
+    button.icon:hover {
+      background: rgba(var(--rgb-primary-text-color), 0.06);
+      color: var(--primary-text-color);
     }
 
     .tabs button {
@@ -883,7 +922,7 @@ export class EntityExplorerDetailPane extends LitElement {
 
     .tiles {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
       gap: var(--ha-space-3, 12px);
       margin-bottom: var(--ha-space-4, 16px);
     }
@@ -961,10 +1000,22 @@ export class EntityExplorerDetailPane extends LitElement {
       background: rgba(var(--rgb-primary-text-color), 0.04);
     }
 
+    .item-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
     .item-name ha-icon {
-      margin-right: 8px;
-      vertical-align: -3px;
+      flex: none;
+      display: flex;
       color: var(--state-icon-color);
+    }
+
+    .item-name span {
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .item-name ha-icon.active {

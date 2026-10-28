@@ -7,6 +7,10 @@ The panel has four tree views of the same entities: Location (floor, area, devic
 filter chips apply to the current view. Select an entity to see where it sits and open HA's
 more-info dialog.
 
+The URL holds the view, the selection, the search and the filters, for example
+`/entity-explorer/network?entity=light.kitchen`, so a refresh or a shared link opens the same
+place. Open folders are remembered per browser.
+
 ## Install
 
 Entity Explorer ships as a HACS custom integration. Add
@@ -30,6 +34,10 @@ mise run develop  # builds the panel, then starts Home Assistant on http://local
 from `custom_components/` at the repo root. The config enables HA's `demo` integration, so a
 fresh instance has devices and entities to browse. Assign areas, floors and labels in that
 instance to see the Location and Labels views fill in.
+
+The config also includes `automations.yaml`, `scripts.yaml` and `scenes.yaml`, and `develop`
+creates them empty. Automations, scripts and scenes made in the UI then load, and show up under
+"Used by" in the References tab.
 
 | Task | What it does |
 | --- | --- |

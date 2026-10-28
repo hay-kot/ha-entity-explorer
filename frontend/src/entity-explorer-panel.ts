@@ -4,7 +4,7 @@ import "./components/tree-pane";
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 
 import type { ViewReference } from "./components/detail-pane";
-import type { ChipId, EntityExplorerTreePane } from "./components/tree-pane";
+import type { EntityExplorerTreePane } from "./components/tree-pane";
 import {
   EMPTY_EXTRAS,
   RegistryCache,
@@ -15,6 +15,7 @@ import {
   type RegistryExtras,
 } from "./data/registry";
 import { define } from "./define";
+import { loadExpanded, loadTreeWidth, saveExpanded, saveTreeWidth } from "./persist";
 import type { HomeAssistant, PanelInfo } from "./hass";
 import { buildView } from "./tree/build";
 import { VIEW_IDS, type Registry, type TreeNode, type ViewId } from "./tree/model";
@@ -27,25 +28,22 @@ import {
   searchTree,
   visibleRows,
 } from "./tree/rows";
+import { readUrlState, urlFor } from "./url";
+import type { ChipId } from "./views";
 
 interface Selection {
   id: string;
   entityId?: string;
 }
 
-const TREE_WIDTH_KEY = "entity-explorer.tree-width";
 const TREE_WIDTH_DEFAULT = 400;
 const TREE_WIDTH_MIN = 260;
 // Room the detail pane keeps when the tree is dragged wider.
 const DETAIL_WIDTH_MIN = 360;
 
 function storedTreeWidth(): number {
-  try {
-    const value = Number(localStorage.getItem(TREE_WIDTH_KEY));
-    return value >= TREE_WIDTH_MIN ? value : TREE_WIDTH_DEFAULT;
-  } catch {
-    return TREE_WIDTH_DEFAULT;
-  }
+  const width = loadTreeWidth();
+  return width && width >= TREE_WIDTH_MIN ? width : TREE_WIDTH_DEFAULT;
 }
 
 export class EntityExplorerPanel extends LitElement {
@@ -85,6 +83,12 @@ export class EntityExplorerPanel extends LitElement {
   private loading = false;
   private referencesCache?: { registry: Registry; entityId: string; value: ViewReference[] };
   private unsubscribeLabels?: Promise<() => void>;
+  private labelsLoaded = false;
+  private integrationsLoaded = false;
+  private urlRead = false;
+  // A selection from the URL waits here until the tree that holds it is
+  // built. The Labels and Network views need fetched data first.
+  private pendingSelection?: { entity?: string; node?: string };
 
   constructor() {
     super();
@@ -106,8 +110,74 @@ export class EntityExplorerPanel extends LitElement {
 
   protected willUpdate(changed: PropertyValues) {
     super.willUpdate(changed);
-    if (!changed.has("hass") || !this.hass) return;
-    const previous = changed.get("hass") as HomeAssistant | undefined;
+    if (!this.hass) return;
+    if (!this.urlRead) this.readUrl();
+    if (changed.has("hass")) this.watchRegistries(changed.get("hass") as HomeAssistant | undefined);
+    if (this.pendingSelection) this.applyPendingSelection();
+  }
+
+  protected updated(changed: PropertyValues) {
+    super.updated(changed);
+    if (this.urlRead) this.writeUrl();
+  }
+
+  private get basePath(): string {
+    return `/${this.panel?.url_path ?? "entity-explorer"}`;
+  }
+
+  private readUrl() {
+    this.urlRead = true;
+    const state = readUrlState(this.basePath, location);
+    if (state.view) this.view = state.view;
+    this.query = state.query ?? "";
+    this.chips = new Set(state.chips);
+    if (state.entity || state.node) {
+      this.pendingSelection = { entity: state.entity, node: state.node };
+    }
+  }
+
+  // replaceState, not pushState: tree clicks should not fill the back button
+  // history.
+  private writeUrl() {
+    if (!location.pathname.startsWith(this.basePath)) return;
+    const url = urlFor(this.basePath, {
+      view: this.view,
+      ...(this.pendingSelection ?? this.selectionForUrl()),
+      query: this.query,
+      chips: [...this.chips],
+    });
+    if (url !== location.pathname + location.search) history.replaceState(history.state, "", url);
+  }
+
+  // An entity id is shorter and survives tree changes, so it is preferred
+  // whenever it leads back to the same node.
+  private selectionForUrl(): { entity?: string; node?: string } {
+    const selection = this.selection;
+    if (!selection) return {};
+    if (!selection.entityId) return { node: selection.id };
+    const first = findEntity(this.roots(this.view), selection.entityId);
+    return first?.node.id === selection.id ? { entity: selection.entityId } : { node: selection.id };
+  }
+
+  private applyPendingSelection() {
+    const { entity, node } = this.pendingSelection!;
+    const roots = this.roots(this.view);
+    const hit = node ? findNode(roots, node) : entity ? findEntity(roots, entity) : undefined;
+    if (!hit) {
+      if (this.labelsLoaded && this.integrationsLoaded) this.pendingSelection = undefined;
+      return;
+    }
+    this.pendingSelection = undefined;
+    this.selection = { id: hit.node.id, entityId: hit.node.entityId };
+    this.setExpanded(
+      hit.ancestors.map((n) => n.id),
+      true,
+    );
+    this.revealInTree();
+  }
+
+  private watchRegistries(previous: HomeAssistant | undefined) {
+    if (!this.hass) return;
 
     if (!this.unsubscribeLabels) {
       this.unsubscribeLabels = this.hass.connection.subscribeEvents(
@@ -127,6 +197,9 @@ export class EntityExplorerPanel extends LitElement {
       this.extras = { ...this.extras, labels: await fetchLabels(this.hass) };
     } catch (err) {
       console.warn("entity-explorer: could not load labels", err);
+    } finally {
+      this.labelsLoaded = true;
+      this.requestUpdate();
     }
   }
 
@@ -160,6 +233,8 @@ export class EntityExplorerPanel extends LitElement {
       console.warn("entity-explorer: could not load integrations", err);
     } finally {
       this.loading = false;
+      this.integrationsLoaded = true;
+      this.requestUpdate();
     }
   }
 
@@ -188,7 +263,13 @@ export class EntityExplorerPanel extends LitElement {
   };
 
   private expandedFor(view: ViewId, roots: TreeNode[]): ReadonlySet<string> {
-    const set = this.expanded.get(view);
+    let set = this.expanded.get(view);
+    if (!set) {
+      set = loadExpanded(view);
+      // Cached in place: the stored set equals what is already on screen, so
+      // no update is needed.
+      if (set) this.expanded.set(view, set);
+    }
     if (set) return set;
     // Floors are few and the areas under them are the useful first level.
     return view === "location" ? new Set(roots.map((n) => n.id)) : new Set();
@@ -202,6 +283,7 @@ export class EntityExplorerPanel extends LitElement {
       else next.delete(id);
     }
     this.expanded = new Map(this.expanded).set(this.view, next);
+    saveExpanded(this.view, next);
   }
 
   private onToggle(e: CustomEvent<string>) {
@@ -280,12 +362,8 @@ export class EntityExplorerPanel extends LitElement {
     return Math.round(Math.min(Math.max(width, TREE_WIDTH_MIN), max));
   }
 
-  private saveTreeWidth() {
-    try {
-      localStorage.setItem(TREE_WIDTH_KEY, String(this.treeWidth));
-    } catch {
-      // Storage can be blocked. The width then lasts until the page reloads.
-    }
+  private persistTreeWidth() {
+    saveTreeWidth(this.treeWidth);
   }
 
   private onSplitterDown(e: PointerEvent) {
@@ -300,7 +378,7 @@ export class EntityExplorerPanel extends LitElement {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
       handle.removeEventListener("pointercancel", up);
-      this.saveTreeWidth();
+      this.persistTreeWidth();
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
@@ -314,12 +392,12 @@ export class EntityExplorerPanel extends LitElement {
     else if (e.key === "ArrowRight") this.treeWidth = this.clampTreeWidth(this.treeWidth + step);
     else return;
     e.preventDefault();
-    this.saveTreeWidth();
+    this.persistTreeWidth();
   }
 
   private resetTreeWidth() {
     this.treeWidth = this.clampTreeWidth(TREE_WIDTH_DEFAULT);
-    this.saveTreeWidth();
+    this.persistTreeWidth();
   }
 
   private onChipToggle(e: CustomEvent<ChipId>) {

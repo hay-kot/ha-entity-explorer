@@ -10,15 +10,7 @@ import type { HomeAssistant } from "../hass";
 import { domainIcon, entityIcon } from "../icons";
 import type { TreeNode, ViewId } from "../tree/model";
 import type { SearchResult, TreeRow } from "../tree/rows";
-import { VIEWS } from "../views";
-
-export type ChipId = "unavailable" | "hide-diagnostic" | "hide-hidden";
-
-export const CHIPS: { id: ChipId; label: string; icon: string }[] = [
-  { id: "unavailable", label: "Unavailable", icon: "mdi:alert-circle-outline" },
-  { id: "hide-diagnostic", label: "Hide diagnostic", icon: "mdi:eye-off-outline" },
-  { id: "hide-hidden", label: "Hide hidden", icon: "mdi:eye-off" },
-];
+import { CHIPS, VIEWS, type ChipId } from "../views";
 
 type Item = { kind: "row"; row: TreeRow } | { kind: "result"; result: SearchResult };
 
