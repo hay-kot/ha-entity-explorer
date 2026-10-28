@@ -38,7 +38,7 @@ export class EntityExplorerTreePane extends LitElement {
     entityTotalUnfiltered: { attribute: false },
     size: { reflect: true },
     groupNetwork: { attribute: false },
-    popup: { state: true },
+    optionsOpen: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -55,30 +55,27 @@ export class EntityExplorerTreePane extends LitElement {
   declare entityTotalUnfiltered: number;
   declare size: TreeSize;
   declare groupNetwork: boolean;
-  declare private popup?: "info" | "options";
+  declare private optionsOpen: boolean;
 
   constructor() {
     super();
     this.size = "default";
     this.groupNetwork = true;
+    this.optionsOpen = false;
   }
 
   private closeMenuOutside = (e: Event) => {
-    const anchors = [...this.renderRoot.querySelectorAll(".menu-anchor")];
-    if (!anchors.some((a) => e.composedPath().includes(a))) this.popup = undefined;
+    const anchor = this.renderRoot.querySelector(".menu-anchor");
+    if (anchor && !e.composedPath().includes(anchor)) this.optionsOpen = false;
   };
 
   private closeMenuOnEscape = (e: KeyboardEvent) => {
-    if (e.key === "Escape") this.popup = undefined;
+    if (e.key === "Escape") this.optionsOpen = false;
   };
-
-  private togglePopup(popup: "info" | "options") {
-    this.popup = this.popup === popup ? undefined : popup;
-  }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    this.popup = undefined;
+    this.optionsOpen = false;
     this.listenForMenuClose(false);
   }
 
@@ -97,7 +94,7 @@ export class EntityExplorerTreePane extends LitElement {
 
   protected async updated(changed: PropertyValues) {
     super.updated(changed);
-    if (changed.has("popup")) this.listenForMenuClose(Boolean(this.popup));
+    if (changed.has("optionsOpen")) this.listenForMenuClose(this.optionsOpen);
     if (!this.scrollToSelected) return;
     this.scrollToSelected = false;
     const index = this.items().findIndex(
@@ -227,40 +224,15 @@ export class EntityExplorerTreePane extends LitElement {
         <div class="menu-anchor">
           <button
             class="icon small"
-            title="About this view"
-            aria-label="About this view"
-            aria-expanded=${String(this.popup === "info")}
-            @click=${() => this.togglePopup("info")}
-          >
-            <ha-icon icon="mdi:information-outline"></ha-icon>
-          </button>
-          ${this.popup === "info"
-            ? html`<div class="menu info" role="dialog" aria-label="About this view">
-                <div class="menu-title">${VIEWS[this.view].name} view</div>
-                <p>
-                  ${this.view === "network" && this.groupNetwork ? "Integration type > " : ""}${VIEWS[
-                    this.view
-                  ].note}
-                </p>
-                ${this.view === "location"
-                  ? html`<p class="key"><i></i>Area set on the entity, overriding its device</p>
-                      <p><span class="tag">1 of 2</span> Device split across areas</p>`
-                  : nothing}
-              </div>`
-            : nothing}
-        </div>
-        <div class="menu-anchor">
-          <button
-            class="icon small"
             title="Tree options"
             aria-label="Tree options"
             aria-haspopup="dialog"
-            aria-expanded=${String(this.popup === "options")}
-            @click=${() => this.togglePopup("options")}
+            aria-expanded=${String(this.optionsOpen)}
+            @click=${() => (this.optionsOpen = !this.optionsOpen)}
           >
             <ha-icon icon="mdi:dots-horizontal"></ha-icon>
           </button>
-          ${this.popup === "options"
+          ${this.optionsOpen
             ? html`<div class="menu" role="dialog" aria-label="Tree options">
                 <div class="menu-section">
                   <div class="menu-title">Tree size</div>
@@ -674,8 +646,7 @@ export class EntityExplorerTreePane extends LitElement {
       color: var(--secondary-text-color);
     }
 
-    .override,
-    .key i {
+    .override {
       flex: none;
       display: inline-block;
       width: 7px;
@@ -708,25 +679,6 @@ export class EntityExplorerTreePane extends LitElement {
 
     .foot > span:first-child {
       margin-right: auto;
-    }
-
-    .menu.info {
-      width: max-content;
-      max-width: 260px;
-      padding: 6px 16px 10px;
-      font-size: 13px;
-      color: var(--primary-text-color);
-    }
-
-    .menu.info .menu-title {
-      padding: 6px 0;
-    }
-
-    .menu.info p {
-      margin: 4px 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     button.icon.small {
@@ -823,12 +775,6 @@ export class EntityExplorerTreePane extends LitElement {
     .toggle input:focus-visible {
       outline: 2px solid var(--primary-color);
       outline-offset: 2px;
-    }
-
-    .key {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
     }
   `;
 }
